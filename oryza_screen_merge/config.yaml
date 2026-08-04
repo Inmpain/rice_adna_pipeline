@@ -1,0 +1,17 @@
+# Output directory for the merged candidate-Oryza FASTQs.
+output_dir: /home/scratch/yinmt202607/gene/results/oryza_candidates_combined
+
+# These directories must contain candidate FASTQs that have already been
+# screened against the Asian rice panel. Each pattern needs a {sample} wildcard.
+sources:
+  shotgun:
+    directory: /home/scratch/yinmt202607/tests/param_matrix_bt2_vs_bwa/01.reads_combined/bwa
+    pattern: "{sample}.prefiltered.IRGSP1.mapped.fq"
+
+  panel1:
+    directory: /home/scratch/yinmt202607/tests/param_matrix_bt2_vs_bwa/01.reads_combined/bwa
+    pattern: "{sample}_RicePanel1.bwa.primary_mapped.fastq.gz"
+
+  panel2:
+    directory: /home/scratch/yinmt202607/tests/param_matrix_bt2_vs_bwa/01.reads_combined/bwa
+    pattern: "{sample}_RicePanel2.bwa.primary_mapped.fastq.gz"

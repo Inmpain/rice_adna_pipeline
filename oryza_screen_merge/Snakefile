@@ -1,0 +1,153 @@
+from pathlib import Path
+
+
+configfile: "config.yaml"
+
+shell.executable("/bin/bash")
+
+
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+
+SOURCE_ORDER = ("shotgun", "panel1", "panel2")
+SOURCES = config["sources"]
+
+missing_sources = [source for source in SOURCE_ORDER if source not in SOURCES]
+if missing_sources:
+    raise ValueError(
+        "Missing required sources in config.yaml: " + ", ".join(missing_sources)
+    )
+
+OUT_DIR = Path(config["output_dir"])
+COMBINED_FASTQ_DIR = OUT_DIR / "combined_mapped_fastq"
+LOG_DIR = OUT_DIR / "_logs"
+
+
+# -----------------------------------------------------------------------------
+# Input discovery
+#
+# All inputs are existing candidate-Oryza FASTQs produced by an earlier screen.
+# Each source defines a path pattern containing exactly one {sample} wildcard.
+# -----------------------------------------------------------------------------
+
+def source_pattern(source):
+    source_config = SOURCES[source]
+    pattern = source_config["pattern"]
+    if "{sample}" not in pattern:
+        raise ValueError(
+            f"sources.{source}.pattern must contain a {{sample}} wildcard: {pattern}"
+        )
+    return str(Path(source_config["directory"]) / pattern)
+
+
+SAMPLES_BY_SOURCE = {
+    source: set(glob_wildcards(source_pattern(source)).sample)
+    for source in SOURCE_ORDER
+}
+
+empty_sources = [
+    source for source in SOURCE_ORDER if not SAMPLES_BY_SOURCE[source]
+]
+if empty_sources:
+    details = ", ".join(
+        f"{source}={source_pattern(source)}" for source in empty_sources
+    )
+    raise ValueError(f"No candidate FASTQ files found for: {details}")
+
+all_discovered_samples = set.union(
+    *(SAMPLES_BY_SOURCE[source] for source in SOURCE_ORDER)
+)
+sample_mismatches = {
+    source: sorted(all_discovered_samples - SAMPLES_BY_SOURCE[source])
+    for source in SOURCE_ORDER
+    if all_discovered_samples - SAMPLES_BY_SOURCE[source]
+}
+if sample_mismatches:
+    details = "; ".join(
+        f"{source} missing: {', '.join(samples)}"
+        for source, samples in sample_mismatches.items()
+    )
+    raise ValueError(
+        "Shotgun, panel1, and panel2 must contain the same sample set. " + details
+    )
+
+SAMPLES = sorted(all_discovered_samples)
+
+print("Candidate FASTQ sources:")
+for source in SOURCE_ORDER:
+    print(f"  {source}: {source_pattern(source)}")
+print("Samples:")
+print("\n".join(SAMPLES))
+
+
+def get_candidate_fastqs(wildcards):
+    return [
+        source_pattern(source).format(sample=wildcards.sample)
+        for source in SOURCE_ORDER
+    ]
+
+
+# -----------------------------------------------------------------------------
+# Final target: one combined candidate-Oryza FASTQ per sample.
+# -----------------------------------------------------------------------------
+
+rule all:
+    input:
+        expand(
+            str(COMBINED_FASTQ_DIR / "{sample}.oryza_candidates.combined.fastq.gz"),
+            sample=SAMPLES,
+        )
+
+
+# -----------------------------------------------------------------------------
+# Merge the existing shotgun, panel1, and panel2 candidate FASTQs.
+#
+# The shotgun input is plain FASTQ while panel1 and panel2 are gzip-compressed.
+# Each input is read according to its suffix, then all records are recompressed
+# as one gzip stream. There is no BWA mapping, BAM conversion, IRGSP remapping,
+# duplicate removal, or MAPQ filtering in this workflow.
+# -----------------------------------------------------------------------------
+
+rule merge_candidate_fastqs:
+    input:
+        fastqs=get_candidate_fastqs,
+    output:
+        fastq=str(
+            COMBINED_FASTQ_DIR
+            / "{sample}.oryza_candidates.combined.fastq.gz"
+        ),
+    threads: 1
+    resources:
+        mem_mb=2000,
+        runtime="1h",
+        slurm_partition="compregular",
+    log:
+        str(LOG_DIR / "merge_fastq" / "{sample}.log"),
+    shell:
+        r"""
+        set -euo pipefail
+
+        mkdir -p \
+            "$(dirname {output.fastq:q})" \
+            "$(dirname {log:q})"
+
+        tmp_fastq="{output.fastq}.tmp"
+
+        cleanup() {{
+            rm -f "$tmp_fastq"
+        }}
+        trap cleanup EXIT
+
+        (
+            for fq in {input.fastqs:q}; do
+                if [[ "$fq" == *.gz ]]; then
+                    gzip -cd "$fq"
+                else
+                    cat "$fq"
+                fi
+            done | gzip -c > "$tmp_fastq"
+        ) 2> {log:q}
+
+        mv "$tmp_fastq" {output.fastq:q}
+        """
