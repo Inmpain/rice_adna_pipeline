@@ -103,9 +103,10 @@ rule all:
 # -----------------------------------------------------------------------------
 # Merge the existing shotgun, panel1, and panel2 candidate FASTQs.
 #
-# The inputs are decompressed and recompressed as one gzip stream for broad
-# downstream compatibility. There is no BWA mapping, BAM conversion, IRGSP
-# remapping, duplicate removal, or MAPQ filtering in this workflow.
+# The shotgun input is plain FASTQ while panel1 and panel2 are gzip-compressed.
+# Each input is read according to its suffix, then all records are recompressed
+# as one gzip stream. There is no BWA mapping, BAM conversion, IRGSP remapping,
+# duplicate removal, or MAPQ filtering in this workflow.
 # -----------------------------------------------------------------------------
 
 rule merge_candidate_fastqs:
@@ -139,8 +140,13 @@ rule merge_candidate_fastqs:
         trap cleanup EXIT
 
         (
-            gzip -cd {input.fastqs:q} \
-            | gzip -c > "$tmp_fastq"
+            for fq in {input.fastqs:q}; do
+                if [[ "$fq" == *.gz ]]; then
+                    gzip -cd "$fq"
+                else
+                    cat "$fq"
+                fi
+            done | gzip -c > "$tmp_fastq"
         ) 2> {log:q}
 
         mv "$tmp_fastq" {output.fastq:q}
