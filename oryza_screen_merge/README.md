@@ -1,41 +1,45 @@
-# Oryza candidate-read screen and merge
+# Merge existing Oryza candidate FASTQs
 
-This Snakemake workflow performs only the candidate-read extraction requested:
+This Snakemake workflow performs one operation only: for each sample, merge the
+existing candidate-Oryza FASTQs from shotgun, panel1, and panel2 into one
+compressed FASTQ.
 
-1. Screen shotgun, panel1, and panel2 reads independently against
-   `asian_rice_panel.fa` using `bwa aln` / `bwa samse`.
-2. Keep primary mapped records (`samtools view -F 0x904`).
-3. Convert each source BAM back to compressed FASTQ.
-4. Concatenate the three candidate FASTQs per sample.
+```text
+shotgun candidate FASTQ ---+
+panel1 candidate FASTQ ----+--> combined candidate-Oryza FASTQ
+panel2 candidate FASTQ ----+
+```
 
-It deliberately does not remap to IRGSP, mark/remove duplicates, apply MAPQ30,
-calculate coverage, call variants, or count gene hits.
+It does not run BWA, create or read BAM files, remap to IRGSP, remove
+duplicates, apply MAPQ30, calculate coverage, call variants, or count gene hits.
 
 ## Configure
 
-Edit `config.yaml` and replace the reference, panel1, and panel2 placeholder
-paths. A source `pattern` may include source-specific text, for example:
+Edit `config.yaml` and replace the panel1 and panel2 placeholder paths. Each
+source pattern must include a `{sample}` wildcard. Source-specific filenames
+are supported, for example:
 
 ```yaml
 panel1:
-  directory: /path/to/panel1
-  pattern: "{sample}_RicePanel1.bbduk.lowcomp_filtered.fq"
+  directory: /path/to/panel1/candidate_fastq
+  pattern: "{sample}_RicePanel1.asian_rice_panel.primary_mapped.fastq.gz"
 ```
 
-The workflow intentionally requires the same sample set in all three sources.
-It stops with a readable error if any source or sample is missing.
+The `{sample}` value extracted from the three patterns must agree. The workflow
+stops with a readable error if a source is empty or a sample is missing from any
+of the three sources.
 
 ## Check the planned jobs
 
 ```bash
-cd /path/to/oryza_screen_merge
+cd /path/to/rice_adna_pipeline/oryza_screen_merge
 snakemake -n -p
 ```
 
-## Run locally
+## Run
 
 ```bash
-snakemake --cores 20 --printshellcmds
+snakemake --cores 1 --printshellcmds
 ```
 
 For Slurm, use the cluster's configured Snakemake executor/profile.
@@ -46,5 +50,6 @@ For Slurm, use the cluster's configured Snakemake executor/profile.
 <output_dir>/combined_mapped_fastq/<sample>.oryza_candidates.combined.fastq.gz
 ```
 
-The combined FASTQ is rebuilt as one gzip stream rather than merely joining
-three compressed byte streams, which is more portable across downstream tools.
+The workflow decompresses the three inputs and recompresses them as one gzip
+stream instead of merely joining compressed byte streams. This is more portable
+across downstream tools.

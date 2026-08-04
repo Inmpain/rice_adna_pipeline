@@ -1,19 +1,17 @@
-# Use absolute paths on the server.
-reference: /absolute/path/to/asian_rice_panel.fa
-
+# Output directory for the merged candidate-Oryza FASTQs.
 output_dir: /home/zxr619/zxr619/zxr619/rice/data/bam/asian_rice_panel_screen_merged
 
-# Each pattern must contain a {sample} wildcard. Adjust the panel paths and
-# filename patterns to match the real server files before running.
+# These directories must contain candidate FASTQs that have already been
+# screened against the Asian rice panel. Each pattern needs a {sample} wildcard.
 sources:
   shotgun:
-    directory: /home/zxr619/zxr619/zxr619/rice/data/reads/shotgun_reads_processed
-    pattern: "{sample}.cleaned.fq.gz"
+    directory: /home/zxr619/zxr619/zxr619/rice/data/bam/asian_rice_panel_screen/per_sample_mapped_fastq
+    pattern: "{sample}.asian_rice_panel.primary_mapped.fastq.gz"
 
   panel1:
-    directory: /absolute/path/to/panel1_reads_processed
-    pattern: "{sample}.cleaned.fq.gz"
+    directory: /absolute/path/to/panel1_candidate_fastq
+    pattern: "{sample}.asian_rice_panel.primary_mapped.fastq.gz"
 
   panel2:
-    directory: /absolute/path/to/panel2_reads_processed
-    pattern: "{sample}.cleaned.fq.gz"
+    directory: /absolute/path/to/panel2_candidate_fastq
+    pattern: "{sample}.asian_rice_panel.primary_mapped.fastq.gz"
