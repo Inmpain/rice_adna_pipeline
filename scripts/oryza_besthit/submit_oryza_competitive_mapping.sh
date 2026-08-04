@@ -42,6 +42,7 @@ BAM_DIR="${OUT_DIR}/bam_by_database"
 FINAL_DIR="${OUT_DIR}/by_sample"
 LOG_DIR="${OUT_DIR}/logs"
 SUBMIT_DIR="${OUT_DIR}/submissions"
+SERIES_DIR="${OUT_DIR}/series"
 
 # -----------------------------------------------------------------------------
 # SLURM resources. Defaults mirror new_single_multi/step4.euk.mapping.smk.
@@ -65,6 +66,12 @@ SORT_THREADS="${SORT_THREADS:-11}"
 SORT_MEM_PER_THREAD="${SORT_MEM_PER_THREAD:-2G}"
 MERGE_MEM_MB="${MERGE_MEM_MB:-102400}"
 MERGE_TIME="${MERGE_TIME:-24:00:00}"
+
+# One tiny continuation job is kept pending while the current sample runs. It
+# submits the next sample only after the current sample's merge succeeds.
+SERIES_CPUS="${SERIES_CPUS:-1}"
+SERIES_MEM_MB="${SERIES_MEM_MB:-1000}"
+SERIES_TIME="${SERIES_TIME:-01:00:00}"
 
 # First submission: 1. Failed/OOM jobs can be resubmitted with 2 or 3.
 MEMORY_MULTIPLIER="${MEMORY_MULTIPLIER:-1}"
@@ -91,8 +98,18 @@ BOWTIE2_EXTRA=(
 
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 
+# Defaults cover all production WGS shards. The bounds are configurable only
+# to permit fast isolated tests of the orchestration logic.
+WGS_FIRST_SHARD="${WGS_FIRST_SHARD:-1}"
+WGS_LAST_SHARD="${WGS_LAST_SHARD:-129}"
+[[ "$WGS_FIRST_SHARD" =~ ^[1-9][0-9]*$ && "$WGS_LAST_SHARD" =~ ^[1-9][0-9]*$ \
+   && "$WGS_FIRST_SHARD" -le "$WGS_LAST_SHARD" ]] || {
+    echo "ERROR: invalid WGS shard range: ${WGS_FIRST_SHARD}-${WGS_LAST_SHARD}" >&2
+    exit 2
+}
+
 DBS=()
-for shard in $(seq 1 129); do
+for shard in $(seq "$WGS_FIRST_SHARD" "$WGS_LAST_SHARD"); do
     DBS+=("wgs_eukaryota.${shard}")
 done
 DBS+=("asian_rice_panel" "irgsp")
@@ -112,6 +129,13 @@ Usage:
   # 3. Submit exactly one named sample (131 maps + 1 merge).
   bash submit_oryza_competitive_mapping.sh submit LV6000619499
 
+  # 4. Process all samples sequentially. Only the current sample is submitted;
+  #    a tiny afterok continuation submits the next sample after merge success.
+  bash submit_oryza_competitive_mapping.sh series --all
+
+  # Or provide an explicit ordered subset.
+  bash submit_oryza_competitive_mapping.sh series LV6000619499 LV6000619917
+
 Optional smoke-test overrides:
   TEST_READS=100 TEST_DB=asian_rice_panel \
     bash submit_oryza_competitive_mapping.sh test
@@ -122,8 +146,9 @@ Optional smoke-test overrides:
 Internal SLURM worker modes (do not normally run by hand):
   bash submit_oryza_competitive_mapping.sh map SAMPLE DB FASTQ
   bash submit_oryza_competitive_mapping.sh merge SAMPLE
+  bash submit_oryza_competitive_mapping.sh series-next SERIES_ID SAMPLE [SAMPLE ...]
 
-There is intentionally no "submit all samples" mode.
+Series mode never pre-submits later samples.
 Do not rerun a sample while its earlier mapping jobs are still queued/running.
 After an interruption, first inspect squeue and the submission TSV.
 
@@ -305,6 +330,25 @@ ensure_sample_has_no_active_jobs() {
         echo "ERROR: this sample already has queued/running workflow jobs:" >&2
         sed 's/^/  /' <<< "$active_jobs" >&2
         echo "Wait for or cancel those jobs before resubmitting sample=$sample" >&2
+        return 1
+    fi
+}
+
+ensure_no_active_production_jobs() {
+    local active_jobs
+    command -v squeue >/dev/null 2>&1 || {
+        echo "ERROR: squeue not found on PATH" >&2
+        return 1
+    }
+
+    active_jobs="$(
+        squeue -h -u "${USER:?USER is not set}" -o '%A|%j|%T' |
+        awk -F'|' '$2 ~ /^ory(map|merge|next)\./ { print }'
+    )"
+    if [[ -n "$active_jobs" ]]; then
+        echo "ERROR: production workflow jobs are still queued/running:" >&2
+        sed 's/^/  /' <<< "$active_jobs" >&2
+        echo "Wait for or cancel them before starting a new series." >&2
         return 1
     fi
 }
@@ -580,8 +624,8 @@ run_merge() {
         input_bams+=("$bam")
     done
 
-    [[ "${#input_bams[@]}" -eq 131 ]] || {
-        echo "ERROR: expected 131 BAMs, found ${#input_bams[@]}" >&2
+    [[ "${#input_bams[@]}" -eq "${#DBS[@]}" ]] || {
+        echo "ERROR: expected ${#DBS[@]} BAMs, found ${#input_bams[@]}" >&2
         exit 1
     }
 
@@ -630,6 +674,8 @@ run_merge() {
 submit_one_sample() {
     [[ "$#" -eq 1 ]] || { usage >&2; exit 2; }
     local sample="$1"
+    LAST_MERGE_JOB_ID=""
+    LAST_SUBMISSION_LOG=""
     [[ "$sample" =~ ^[A-Za-z0-9._-]+$ ]] || {
         echo "ERROR: invalid sample name: $sample" >&2
         exit 2
@@ -669,10 +715,11 @@ submit_one_sample() {
     local stamp submission_log
     stamp="$(date '+%Y%m%d_%H%M%S')"
     submission_log="${SUBMIT_DIR}/submitted_jobs.${sample}.${stamp}.tsv"
+    LAST_SUBMISSION_LOG="$submission_log"
     printf 'job_type\tsample\tdatabase\tjob_id\tmem_MiB\tdependency\n' > "$submission_log"
 
     echo "[submit] sample=$sample databases=${#DBS[@]}"
-    echo "[submit] this invocation will submit at most 132 jobs"
+    echo "[submit] this invocation will submit at most $(( ${#DBS[@]} + 1 )) jobs"
     echo "[submit] memory plan=$plan_file"
     echo "[submit] multiplier=$MEMORY_MULTIPLIER"
 
@@ -748,11 +795,140 @@ submit_one_sample() {
             "$SCRIPT_PATH" merge "$sample")"
     fi
     clean_job_id="${job_id%%;*}"
+    LAST_MERGE_JOB_ID="$clean_job_id"
     printf 'merge_sort\t%s\tALL\t%s\t%s\t%s\n' \
         "$sample" "$clean_job_id" "$MERGE_MEM_MB" "$dependency" >> "$submission_log"
     echo "[submit] merge job=$clean_job_id sample=$sample dependency_jobs=${#map_job_ids[@]}"
     echo "[submit] job record=$submission_log"
     echo "[submit] finished=$(timestamp)"
+}
+
+validate_series_samples() {
+    [[ "$#" -gt 0 ]] || {
+        echo "ERROR: series requires --all or at least one sample name" >&2
+        return 1
+    }
+
+    declare -A seen=()
+    local sample fq
+    for sample in "$@"; do
+        [[ "$sample" =~ ^[A-Za-z0-9._-]+$ ]] || {
+            echo "ERROR: invalid sample name in series: $sample" >&2
+            return 1
+        }
+        [[ -z "${seen[$sample]:-}" ]] || {
+            echo "ERROR: duplicate sample in series: $sample" >&2
+            return 1
+        }
+        seen["$sample"]=1
+        fq="${READ_DIR}/${sample}${READ_SUFFIX}"
+        [[ -s "$fq" ]] || {
+            echo "ERROR: series sample FASTQ not found: $fq" >&2
+            return 1
+        }
+    done
+}
+
+run_series_step() {
+    [[ "$#" -ge 2 ]] || {
+        echo "ERROR: series step requires SERIES_ID and at least one sample" >&2
+        exit 2
+    }
+    local series_id="$1"
+    shift
+    local state_file="${SERIES_DIR}/series.${series_id}.state.tsv"
+    local sample next_sample continuation_log job_id continuation_job_id
+
+    mkdir -p "$SERIES_DIR" "${LOG_DIR}/series"
+    LAST_MERGE_JOB_ID=""
+
+    # Completed samples are skipped immediately. Stop after submitting the first
+    # incomplete sample; later samples remain only as arguments to one tiny job.
+    while [[ "$#" -gt 0 ]]; do
+        sample="$1"
+        shift
+        echo "[series] submitting current sample=$sample remaining_after_current=$#"
+        submit_one_sample "$sample"
+        if [[ -n "$LAST_MERGE_JOB_ID" ]]; then
+            printf '%s\tcurrent_sample_submitted\t%s\t%s\t\t\t%s\n' \
+                "$(timestamp)" "$sample" "$LAST_MERGE_JOB_ID" "$#" >> "$state_file"
+            break
+        fi
+        printf '%s\talready_complete\t%s\t\t\t\t%s\n' \
+            "$(timestamp)" "$sample" "$#" >> "$state_file"
+    done
+
+    if [[ -z "$LAST_MERGE_JOB_ID" ]]; then
+        printf '%s\tseries_complete\t\t\t\t\t0\n' "$(timestamp)" >> "$state_file"
+        echo "[series] all requested samples were already complete; no jobs submitted"
+        return 0
+    fi
+
+    if [[ "$#" -eq 0 ]]; then
+        printf '%s\tfinal_sample_waiting_for_merge\t%s\t%s\t\t\t0\n' \
+            "$(timestamp)" "$sample" "$LAST_MERGE_JOB_ID" >> "$state_file"
+        echo "[series] final sample submitted; no continuation job is needed"
+        return 0
+    fi
+
+    next_sample="$1"
+    continuation_log="${LOG_DIR}/series/series.${series_id}.next_${next_sample}.%j.log"
+    sbatch_common_args
+    job_id="$(sbatch \
+        --parsable \
+        "${SBATCH_COMMON[@]}" \
+        --dependency="afterok:${LAST_MERGE_JOB_ID}" \
+        --kill-on-invalid-dep=yes \
+        --job-name="orynext.${next_sample:0:28}" \
+        --cpus-per-task="$SERIES_CPUS" \
+        --mem="${SERIES_MEM_MB}M" \
+        --time="$SERIES_TIME" \
+        --output="$continuation_log" \
+        --error="$continuation_log" \
+        --export=ALL \
+        "$SCRIPT_PATH" series-next "$series_id" "$@")"
+    continuation_job_id="${job_id%%;*}"
+
+    printf '%s\tcontinuation_submitted\t%s\t%s\t%s\t%s\t%s\n' \
+        "$(timestamp)" "$sample" "$LAST_MERGE_JOB_ID" \
+        "$continuation_job_id" "$next_sample" "$#" >> "$state_file"
+    echo "[series] continuation job=$continuation_job_id waits for merge=$LAST_MERGE_JOB_ID"
+    echo "[series] next sample=$next_sample; later samples are not submitted yet"
+    echo "[series] state=$state_file"
+}
+
+start_series() {
+    [[ "$#" -gt 0 ]] || { usage >&2; exit 2; }
+    local samples=()
+    if [[ "$1" == "--all" ]]; then
+        [[ "$#" -eq 1 ]] || {
+            echo "ERROR: --all cannot be combined with sample names" >&2
+            exit 2
+        }
+        mapfile -t samples < <(list_samples)
+    else
+        samples=("$@")
+    fi
+
+    validate_series_samples "${samples[@]}"
+    ensure_no_active_production_jobs
+
+    local series_id state_file sample position=0
+    series_id="$(date '+%Y%m%d_%H%M%S').$$"
+    mkdir -p "$SERIES_DIR"
+    state_file="${SERIES_DIR}/series.${series_id}.state.tsv"
+    printf 'timestamp\tevent\tsample\tmerge_job_id\tcontinuation_job_id\tnext_sample\tremaining_samples\n' \
+        > "$state_file"
+    for sample in "${samples[@]}"; do
+        position=$((position + 1))
+        printf '%s\tplanned_sample_%s_of_%s\t%s\t\t\t\t%s\n' \
+            "$(timestamp)" "$position" "${#samples[@]}" "$sample" \
+            "$(( ${#samples[@]} - position ))" >> "$state_file"
+    done
+
+    echo "[series] id=$series_id samples=${#samples[@]}"
+    echo "[series] only the first incomplete sample will be submitted now"
+    run_series_step "$series_id" "${samples[@]}"
 }
 
 mode="${1:-}"
@@ -775,6 +951,14 @@ case "$mode" in
     submit)
         shift
         submit_one_sample "$@"
+        ;;
+    series)
+        shift
+        start_series "$@"
+        ;;
+    series-next)
+        shift
+        run_series_step "$@"
         ;;
     map)
         shift
