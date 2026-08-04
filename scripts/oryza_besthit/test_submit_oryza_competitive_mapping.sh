@@ -40,9 +40,14 @@ sbatch() {
     esac
 }
 sinfo() { printf 'comp*\n'; }
+squeue() {
+    if [[ "${FAKE_ACTIVE:-0}" == "1" ]]; then
+        printf '777|orymap.S1.wgs_eukaryota.1|RUNNING\n'
+    fi
+}
 bowtie2() { return 0; }
 samtools() { return 0; }
-export -f sbatch sinfo bowtie2 samtools
+export -f sbatch sinfo squeue bowtie2 samtools
 
 COMMON_ENV=(
     READ_DIR="$TEST_ROOT/reads"
@@ -74,13 +79,34 @@ grep -Fq 'job_id=9001 database=irgsp' "$TEST_ROOT/smoke.log"
 [[ -s "$TEST_ROOT/out/smoke_test/input/S1.smoke_test.first_1_reads.fastq.gz" ]]
 printf 'PASS one_job_smoke_test\n'
 
+[[ "$(env "${COMMON_ENV[@]}" bash "$SUT" list)" == "S1" ]]
+printf 'PASS list_samples\n'
+
 set +e
-env "${COMMON_ENV[@]}" bash "$SUT" submit > "$TEST_ROOT/locked.log" 2>&1
-locked_status="$?"
+env "${COMMON_ENV[@]}" bash "$SUT" submit > "$TEST_ROOT/no_sample.log" 2>&1
+no_sample_status="$?"
 set -e
-[[ "$locked_status" -eq 2 ]]
-grep -Fq 'full submission is locked' "$TEST_ROOT/locked.log"
-printf 'PASS full_submit_lock\n'
+[[ "$no_sample_status" -eq 2 ]]
+grep -Fq 'submit LV6000619499' "$TEST_ROOT/no_sample.log"
+printf 'PASS all_sample_submit_removed\n'
+
+set +e
+env "${COMMON_ENV[@]}" bash "$SUT" submit UNKNOWN \
+    > "$TEST_ROOT/unknown_sample.log" 2>&1
+unknown_status="$?"
+set -e
+[[ "$unknown_status" -eq 1 ]]
+grep -Fq 'sample FASTQ not found' "$TEST_ROOT/unknown_sample.log"
+printf 'PASS unknown_sample_rejected\n'
+
+set +e
+env "${COMMON_ENV[@]}" FAKE_ACTIVE=1 bash "$SUT" submit S1 \
+    > "$TEST_ROOT/active_sample.log" 2>&1
+active_status="$?"
+set -e
+[[ "$active_status" -ne 0 ]]
+grep -Fq 'already has queued/running workflow jobs' "$TEST_ROOT/active_sample.log"
+printf 'PASS duplicate_active_sample_guard\n'
 
 FULL_OUT="$TEST_ROOT/full_out"
 env \
@@ -90,10 +116,11 @@ env \
     OUT_DIR="$FULL_OUT" \
     SLURM_PARTITION=comp \
     SLURM_ACCOUNT= \
-    CONFIRM_FULL_SUBMIT=YES \
-    bash "$SUT" submit > "$TEST_ROOT/full_submit.log"
+    bash "$SUT" submit S1 > "$TEST_ROOT/sample_submit.log"
 submission_file="$(find "$FULL_OUT/submissions" -name 'submitted_jobs.*.tsv' -print -quit)"
 [[ -n "$submission_file" ]]
 [[ "$(wc -l < "$submission_file" | awk '{print $1}')" -eq 133 ]]
 grep -Fq $'merge_sort\tS1\tALL\t9001' "$submission_file"
-printf 'PASS confirmed_full_submit_plan_131_maps_plus_merge\n'
+grep -Fq '[submit] sample=S1 databases=131' "$TEST_ROOT/sample_submit.log"
+grep -Fq 'this invocation will submit at most 132 jobs' "$TEST_ROOT/sample_submit.log"
+printf 'PASS one_sample_131_maps_plus_merge\n'

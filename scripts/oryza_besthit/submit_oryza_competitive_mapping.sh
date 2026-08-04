@@ -4,12 +4,12 @@
 #
 # check mode validates every input/index and calculates the memory range without
 # submitting jobs. test mode submits a smoke test using a small FASTQ subset.
-# submit mode:
-#   - discovers *.oryza_candidates.combined.fastq.gz samples
+# submit mode requires exactly one sample name:
+#   - resolves SAMPLE.oryza_candidates.combined.fastq.gz
 #   - calculates --mem independently for every Bowtie2 database from the six
 #     index files: mem_GiB = (0.7 * index_GiB + 40) * MEMORY_MULTIPLIER
-#   - submits one mapping job per sample x database
-#   - submits one merge + query-name-sort job per sample with afterok dependencies
+#   - submits 131 mapping jobs for that sample only
+#   - submits one merge + query-name-sort job with afterok dependencies
 #
 # Mapping databases:
 #   - wgs_eukaryota.1 .. wgs_eukaryota.129
@@ -100,14 +100,17 @@ DBS+=("asian_rice_panel" "irgsp")
 usage() {
     cat <<'EOF'
 Usage:
+  # Show valid sample names.
+  bash submit_oryza_competitive_mapping.sh list
+
   # 1. Preflight only: validates all 131 indexes; submits nothing.
   bash submit_oryza_competitive_mapping.sh check
 
   # 2. Smoke test: submit only the first 1,000 reads against IRGSP.
   bash submit_oryza_competitive_mapping.sh test
 
-  # 3. Full submission is locked until it is explicitly confirmed.
-  CONFIRM_FULL_SUBMIT=YES bash submit_oryza_competitive_mapping.sh submit
+  # 3. Submit exactly one named sample (131 maps + 1 merge).
+  bash submit_oryza_competitive_mapping.sh submit LV6000619499
 
 Optional smoke-test overrides:
   TEST_READS=100 TEST_DB=asian_rice_panel \
@@ -120,13 +123,14 @@ Internal SLURM worker modes (do not normally run by hand):
   bash submit_oryza_competitive_mapping.sh map SAMPLE DB FASTQ
   bash submit_oryza_competitive_mapping.sh merge SAMPLE
 
-Do not rerun submit while earlier mapping jobs are still queued/running.
+There is intentionally no "submit all samples" mode.
+Do not rerun a sample while its earlier mapping jobs are still queued/running.
 After an interruption, first inspect squeue and the submission TSV.
 
 Retry failed/OOM mapping jobs with twice the calculated memory (only after the
 previous jobs have finished/failed):
-  MEMORY_MULTIPLIER=2 CONFIRM_FULL_SUBMIT=YES \
-    bash submit_oryza_competitive_mapping.sh submit
+  MEMORY_MULTIPLIER=2 \
+    bash submit_oryza_competitive_mapping.sh submit LV6000619499
 EOF
 }
 
@@ -267,6 +271,42 @@ discover_fastqs() {
             return 1
         }
     done
+}
+
+list_samples() {
+    discover_fastqs
+    local fastq base
+    for fastq in "${FASTQS[@]}"; do
+        base="$(basename "$fastq")"
+        printf '%s\n' "${base%$READ_SUFFIX}"
+    done
+}
+
+ensure_sample_has_no_active_jobs() {
+    local sample="$1"
+    local short_sample="${sample:0:28}"
+    local active_jobs
+
+    command -v squeue >/dev/null 2>&1 || {
+        echo "ERROR: squeue not found on PATH" >&2
+        return 1
+    }
+
+    active_jobs="$(
+        squeue -h -u "${USER:?USER is not set}" -o '%A|%j|%T' |
+        awk -F'|' \
+            -v map_prefix="orymap.${short_sample}." \
+            -v merge_name="orymerge.${short_sample}" '
+                index($2, map_prefix) == 1 || $2 == merge_name { print }
+            '
+    )"
+
+    if [[ -n "$active_jobs" ]]; then
+        echo "ERROR: this sample already has queued/running workflow jobs:" >&2
+        sed 's/^/  /' <<< "$active_jobs" >&2
+        echo "Wait for or cancel those jobs before resubmitting sample=$sample" >&2
+        return 1
+    fi
 }
 
 known_database() {
@@ -587,24 +627,30 @@ run_merge() {
     echo "[merge] output=$final_bam"
 }
 
-submit_all() {
-    [[ "${CONFIRM_FULL_SUBMIT:-}" == "YES" ]] || {
-        echo "ERROR: full submission is locked." >&2
-        echo "Run 'bash $SCRIPT_PATH check', then 'bash $SCRIPT_PATH test' first." >&2
-        echo "After the smoke test passes, use:" >&2
-        echo "  CONFIRM_FULL_SUBMIT=YES bash $SCRIPT_PATH submit" >&2
+submit_one_sample() {
+    [[ "$#" -eq 1 ]] || { usage >&2; exit 2; }
+    local sample="$1"
+    [[ "$sample" =~ ^[A-Za-z0-9._-]+$ ]] || {
+        echo "ERROR: invalid sample name: $sample" >&2
         exit 2
     }
 
     # Repeat the complete no-submit preflight immediately before production.
     run_check
 
+    local fq="${READ_DIR}/${sample}${READ_SUFFIX}"
+    [[ -s "$fq" ]] || {
+        echo "ERROR: sample FASTQ not found: $fq" >&2
+        echo "Valid samples are:" >&2
+        list_samples | sed 's/^/  /' >&2
+        exit 1
+    }
+    ensure_sample_has_no_active_jobs "$sample"
+
     mkdir -p "$BAM_DIR" "$FINAL_DIR" "$LOG_DIR" "$SUBMIT_DIR"
     sbatch_common_args
 
-    local fastqs=("${FASTQS[@]}")
-
-    # Calculate index sizes/memory once per database, not once per sample.
+    # Calculate index sizes/memory once for this sample submission.
     declare -A DB_MEM_MB=()
     local plan_file="${SUBMIT_DIR}/index_memory_plan.multiplier_${MEMORY_MULTIPLIER}.tsv"
     printf 'database\tindex_GiB\trequested_mem_MiB\tmemory_multiplier\n' > "$plan_file"
@@ -622,102 +668,100 @@ submit_all() {
 
     local stamp submission_log
     stamp="$(date '+%Y%m%d_%H%M%S')"
-    submission_log="${SUBMIT_DIR}/submitted_jobs.${stamp}.tsv"
+    submission_log="${SUBMIT_DIR}/submitted_jobs.${sample}.${stamp}.tsv"
     printf 'job_type\tsample\tdatabase\tjob_id\tmem_MiB\tdependency\n' > "$submission_log"
 
-    echo "[submit] samples=${#fastqs[@]} databases=${#DBS[@]}"
+    echo "[submit] sample=$sample databases=${#DBS[@]}"
+    echo "[submit] this invocation will submit at most 132 jobs"
     echo "[submit] memory plan=$plan_file"
     echo "[submit] multiplier=$MEMORY_MULTIPLIER"
 
-    local fq base sample bam done final_bam final_done
+    local bam done final_bam final_done
     local job_id clean_job_id dependency map_log merge_log short_sample
     local map_job_ids=()
 
-    for fq in "${fastqs[@]}"; do
-        base="$(basename "$fq")"
-        sample="${base%$READ_SUFFIX}"
-        [[ -n "$sample" ]] || { echo "ERROR: empty sample name from $fq" >&2; exit 1; }
+    final_bam="${FINAL_DIR}/${sample}.competitive.name_sorted.bam"
+    final_done="${FINAL_DIR}/${sample}.competitive.name_sorted.bam.finished"
+    if [[ -s "$final_bam" && -f "$final_done" ]]; then
+        echo "[submit] final already complete; nothing submitted for sample=$sample"
+        return 0
+    fi
 
-        final_bam="${FINAL_DIR}/${sample}.competitive.name_sorted.bam"
-        final_done="${FINAL_DIR}/${sample}.competitive.name_sorted.bam.finished"
-        if [[ -s "$final_bam" && -f "$final_done" ]]; then
-            echo "[submit] final already complete; skip sample=$sample"
+    mkdir -p "${LOG_DIR}/${sample}" "${BAM_DIR}/${sample}"
+    short_sample="${sample:0:28}"
+
+    for db in "${DBS[@]}"; do
+        bam="$(map_bam_path "$sample" "$db")"
+        done="$(map_done_path "$sample" "$db")"
+        if [[ -s "$bam" && -f "$done" ]]; then
+            echo "[submit] mapping already complete; skip sample=$sample db=$db"
             continue
         fi
 
-        mkdir -p "${LOG_DIR}/${sample}" "${BAM_DIR}/${sample}"
-        map_job_ids=()
-        short_sample="${sample:0:28}"
-
-        for db in "${DBS[@]}"; do
-            bam="$(map_bam_path "$sample" "$db")"
-            done="$(map_done_path "$sample" "$db")"
-            if [[ -s "$bam" && -f "$done" ]]; then
-                echo "[submit] mapping already complete; skip sample=$sample db=$db"
-                continue
-            fi
-
-            map_log="${LOG_DIR}/${sample}/${sample}.${db}.map.%j.log"
-            job_id="$(sbatch \
-                --parsable \
-                "${SBATCH_COMMON[@]}" \
-                --job-name="orymap.${short_sample}.${db}" \
-                --cpus-per-task="$MAP_CPUS" \
-                --mem="${DB_MEM_MB[$db]}M" \
-                --time="$MAP_TIME" \
-                --output="$map_log" \
-                --error="$map_log" \
-                "$SCRIPT_PATH" map "$sample" "$db" "$fq")"
-            clean_job_id="${job_id%%;*}"
-            map_job_ids+=("$clean_job_id")
-            printf 'map\t%s\t%s\t%s\t%s\t\n' \
-                "$sample" "$db" "$clean_job_id" "${DB_MEM_MB[$db]}" >> "$submission_log"
-            echo "[submit] map job=$clean_job_id sample=$sample db=$db mem=${DB_MEM_MB[$db]}MiB"
-        done
-
-        dependency=""
-        if [[ "${#map_job_ids[@]}" -gt 0 ]]; then
-            dependency="afterok:$(IFS=:; echo "${map_job_ids[*]}")"
-        fi
-
-        merge_log="${LOG_DIR}/${sample}/${sample}.merge_name_sort.%j.log"
-        if [[ -n "$dependency" ]]; then
-            job_id="$(sbatch \
-                --parsable \
-                "${SBATCH_COMMON[@]}" \
-                --dependency="$dependency" \
-                --kill-on-invalid-dep=yes \
-                --job-name="orymerge.${short_sample}" \
-                --cpus-per-task="$MERGE_CPUS" \
-                --mem="${MERGE_MEM_MB}M" \
-                --time="$MERGE_TIME" \
-                --output="$merge_log" \
-                --error="$merge_log" \
-                "$SCRIPT_PATH" merge "$sample")"
-        else
-            job_id="$(sbatch \
-                --parsable \
-                "${SBATCH_COMMON[@]}" \
-                --job-name="orymerge.${short_sample}" \
-                --cpus-per-task="$MERGE_CPUS" \
-                --mem="${MERGE_MEM_MB}M" \
-                --time="$MERGE_TIME" \
-                --output="$merge_log" \
-                --error="$merge_log" \
-                "$SCRIPT_PATH" merge "$sample")"
-        fi
+        map_log="${LOG_DIR}/${sample}/${sample}.${db}.map.%j.log"
+        job_id="$(sbatch \
+            --parsable \
+            "${SBATCH_COMMON[@]}" \
+            --job-name="orymap.${short_sample}.${db}" \
+            --cpus-per-task="$MAP_CPUS" \
+            --mem="${DB_MEM_MB[$db]}M" \
+            --time="$MAP_TIME" \
+            --output="$map_log" \
+            --error="$map_log" \
+            "$SCRIPT_PATH" map "$sample" "$db" "$fq")"
         clean_job_id="${job_id%%;*}"
-        printf 'merge_sort\t%s\tALL\t%s\t%s\t%s\n' \
-            "$sample" "$clean_job_id" "$MERGE_MEM_MB" "$dependency" >> "$submission_log"
-        echo "[submit] merge job=$clean_job_id sample=$sample dependency_jobs=${#map_job_ids[@]}"
+        map_job_ids+=("$clean_job_id")
+        printf 'map\t%s\t%s\t%s\t%s\t\n' \
+            "$sample" "$db" "$clean_job_id" "${DB_MEM_MB[$db]}" >> "$submission_log"
+        echo "[submit] map job=$clean_job_id sample=$sample db=$db mem=${DB_MEM_MB[$db]}MiB"
     done
 
+    dependency=""
+    if [[ "${#map_job_ids[@]}" -gt 0 ]]; then
+        dependency="afterok:$(IFS=:; echo "${map_job_ids[*]}")"
+    fi
+
+    merge_log="${LOG_DIR}/${sample}/${sample}.merge_name_sort.%j.log"
+    if [[ -n "$dependency" ]]; then
+        job_id="$(sbatch \
+            --parsable \
+            "${SBATCH_COMMON[@]}" \
+            --dependency="$dependency" \
+            --kill-on-invalid-dep=yes \
+            --job-name="orymerge.${short_sample}" \
+            --cpus-per-task="$MERGE_CPUS" \
+            --mem="${MERGE_MEM_MB}M" \
+            --time="$MERGE_TIME" \
+            --output="$merge_log" \
+            --error="$merge_log" \
+            "$SCRIPT_PATH" merge "$sample")"
+    else
+        job_id="$(sbatch \
+            --parsable \
+            "${SBATCH_COMMON[@]}" \
+            --job-name="orymerge.${short_sample}" \
+            --cpus-per-task="$MERGE_CPUS" \
+            --mem="${MERGE_MEM_MB}M" \
+            --time="$MERGE_TIME" \
+            --output="$merge_log" \
+            --error="$merge_log" \
+            "$SCRIPT_PATH" merge "$sample")"
+    fi
+    clean_job_id="${job_id%%;*}"
+    printf 'merge_sort\t%s\tALL\t%s\t%s\t%s\n' \
+        "$sample" "$clean_job_id" "$MERGE_MEM_MB" "$dependency" >> "$submission_log"
+    echo "[submit] merge job=$clean_job_id sample=$sample dependency_jobs=${#map_job_ids[@]}"
     echo "[submit] job record=$submission_log"
     echo "[submit] finished=$(timestamp)"
 }
 
 mode="${1:-}"
 case "$mode" in
+    list)
+        shift
+        [[ "$#" -eq 0 ]] || { usage >&2; exit 2; }
+        list_samples
+        ;;
     check)
         shift
         [[ "$#" -eq 0 ]] || { usage >&2; exit 2; }
@@ -730,8 +774,7 @@ case "$mode" in
         ;;
     submit)
         shift
-        [[ "$#" -eq 0 ]] || { usage >&2; exit 2; }
-        submit_all
+        submit_one_sample "$@"
         ;;
     map)
         shift
