@@ -278,6 +278,10 @@ known_database() {
 }
 
 validate_slurm_request() {
+    local requested_mem_mb="${1:-100}"
+    local requested_cpus="${2:-1}"
+    local requested_time="${3:-00:01:00}"
+
     command -v sbatch >/dev/null 2>&1 || {
         echo "ERROR: sbatch not found on PATH" >&2
         return 1
@@ -301,9 +305,9 @@ validate_slurm_request() {
         --test-only \
         "${SBATCH_COMMON[@]}" \
         --job-name=oryza.preflight \
-        --cpus-per-task=1 \
-        --mem=100M \
-        --time=00:01:00 \
+        --cpus-per-task="$requested_cpus" \
+        --mem="${requested_mem_mb}M" \
+        --time="$requested_time" \
         --wrap=true >/dev/null
 }
 
@@ -342,6 +346,8 @@ run_check() {
     echo "[check] first_sample=$(basename "${FASTQS[0]}")"
     echo "[check] minimum request=${min_mem}MiB (${min_db})"
     echo "[check] maximum request=${max_mem}MiB (${max_db})"
+    validate_slurm_request "$max_mem" "$MAP_CPUS" "$MAP_TIME"
+    echo "[check] largest mapping request accepted by SLURM test-only"
     echo "[check] PASS: inputs, tools, indexes, partition, and account validated"
 }
 
