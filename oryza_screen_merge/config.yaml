@@ -1,0 +1,19 @@
+# Use absolute paths on the server.
+reference: /absolute/path/to/asian_rice_panel.fa
+
+output_dir: /home/zxr619/zxr619/zxr619/rice/data/bam/asian_rice_panel_screen_merged
+
+# Each pattern must contain a {sample} wildcard. Adjust the panel paths and
+# filename patterns to match the real server files before running.
+sources:
+  shotgun:
+    directory: /home/zxr619/zxr619/zxr619/rice/data/reads/shotgun_reads_processed
+    pattern: "{sample}.cleaned.fq.gz"
+
+  panel1:
+    directory: /absolute/path/to/panel1_reads_processed
+    pattern: "{sample}.cleaned.fq.gz"
+
+  panel2:
+    directory: /absolute/path/to/panel2_reads_processed
+    pattern: "{sample}.cleaned.fq.gz"

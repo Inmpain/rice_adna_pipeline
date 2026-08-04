@@ -1,0 +1,285 @@
+from pathlib import Path
+
+
+configfile: "config.yaml"
+
+shell.executable("/bin/bash")
+
+
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+
+SOURCE_ORDER = ("shotgun", "panel1", "panel2")
+SOURCES = config["sources"]
+
+missing_sources = [source for source in SOURCE_ORDER if source not in SOURCES]
+if missing_sources:
+    raise ValueError(
+        "Missing required sources in config.yaml: " + ", ".join(missing_sources)
+    )
+
+RICE_REF = Path(config["reference"])
+OUT_DIR = Path(config["output_dir"])
+
+PER_SOURCE_BAM_DIR = OUT_DIR / "per_source_bam"
+PER_SOURCE_FASTQ_DIR = OUT_DIR / "per_source_mapped_fastq"
+COMBINED_FASTQ_DIR = OUT_DIR / "combined_mapped_fastq"
+LOG_DIR = OUT_DIR / "_logs"
+
+BWA_INDEX_FILES = [
+    f"{RICE_REF}{suffix}"
+    for suffix in (".amb", ".ann", ".bwt", ".pac", ".sa")
+]
+
+BWA_ALN_PARAMS = "-l 1024 -n 0.01 -o 2"
+PRIMARY_MAPPED_EXCLUDE_FLAGS = "0x904"
+
+
+# -----------------------------------------------------------------------------
+# Input discovery
+#
+# Each source defines a path pattern containing exactly one {sample} wildcard.
+# Examples:
+#   {sample}.cleaned.fq.gz
+#   {sample}_RicePanel1.bbduk.lowcomp_filtered.fq
+# -----------------------------------------------------------------------------
+
+def source_pattern(source):
+    source_config = SOURCES[source]
+    pattern = source_config["pattern"]
+    if "{sample}" not in pattern:
+        raise ValueError(
+            f"sources.{source}.pattern must contain a {{sample}} wildcard: {pattern}"
+        )
+    return str(Path(source_config["directory"]) / pattern)
+
+
+SAMPLES_BY_SOURCE = {
+    source: set(glob_wildcards(source_pattern(source)).sample)
+    for source in SOURCE_ORDER
+}
+
+empty_sources = [
+    source for source in SOURCE_ORDER if not SAMPLES_BY_SOURCE[source]
+]
+if empty_sources:
+    details = ", ".join(
+        f"{source}={source_pattern(source)}" for source in empty_sources
+    )
+    raise ValueError(f"No input FASTQ files found for: {details}")
+
+all_discovered_samples = set.union(
+    *(SAMPLES_BY_SOURCE[source] for source in SOURCE_ORDER)
+)
+sample_mismatches = {
+    source: sorted(all_discovered_samples - SAMPLES_BY_SOURCE[source])
+    for source in SOURCE_ORDER
+    if all_discovered_samples - SAMPLES_BY_SOURCE[source]
+}
+if sample_mismatches:
+    details = "; ".join(
+        f"{source} missing: {', '.join(samples)}"
+        for source, samples in sample_mismatches.items()
+    )
+    raise ValueError(
+        "Shotgun, panel1, and panel2 must contain the same sample set. " + details
+    )
+
+SAMPLES = sorted(all_discovered_samples)
+
+print("Sources:")
+for source in SOURCE_ORDER:
+    print(f"  {source}: {source_pattern(source)}")
+print("Samples:")
+print("\n".join(SAMPLES))
+
+
+def get_source_fastq(wildcards):
+    return source_pattern(wildcards.source).format(sample=wildcards.sample)
+
+
+def get_candidate_fastqs(wildcards):
+    return [
+        str(
+            PER_SOURCE_FASTQ_DIR
+            / source
+            / f"{wildcards.sample}.{source}.asian_rice_panel.primary_mapped.fastq.gz"
+        )
+        for source in SOURCE_ORDER
+    ]
+
+
+wildcard_constraints:
+    source="shotgun|panel1|panel2"
+
+
+# -----------------------------------------------------------------------------
+# Final target: one combined candidate-Oryza FASTQ per sample.
+# -----------------------------------------------------------------------------
+
+rule all:
+    input:
+        expand(
+            str(COMBINED_FASTQ_DIR / "{sample}.oryza_candidates.combined.fastq.gz"),
+            sample=SAMPLES,
+        )
+
+
+# -----------------------------------------------------------------------------
+# Step 1: independently screen shotgun, panel1, and panel2 reads against the
+# Asian rice reference panel. Keep primary mapped records only.
+# -----------------------------------------------------------------------------
+
+rule bwa_screen:
+    input:
+        ref=str(RICE_REF),
+        bwa_index=BWA_INDEX_FILES,
+        fq=get_source_fastq,
+    output:
+        bam=str(
+            PER_SOURCE_BAM_DIR
+            / "{source}"
+            / "{sample}.{source}.asian_rice_panel.primary_mapped.bam"
+        ),
+    params:
+        aln=BWA_ALN_PARAMS,
+        exclude_flags=PRIMARY_MAPPED_EXCLUDE_FLAGS,
+    threads: 20
+    resources:
+        mem_mb=32000,
+        runtime="9h",
+        slurm_partition="compregular",
+    log:
+        str(LOG_DIR / "bwa_screen" / "{source}" / "{sample}.log"),
+    shell:
+        r"""
+        set -euo pipefail
+
+        mkdir -p \
+            "$(dirname {output.bam:q})" \
+            "$(dirname {log:q})"
+
+        tmp_sai="$(mktemp \
+            "$(dirname {output.bam:q})/{wildcards.sample}.{wildcards.source}.XXXXXX.sai")"
+
+        cleanup() {{
+            rm -f "$tmp_sai"
+        }}
+        trap cleanup EXIT
+
+        bwa aln \
+            {params.aln} \
+            -t {threads} \
+            {input.ref:q} \
+            {input.fq:q} \
+            > "$tmp_sai" \
+            2> {log:q}
+
+        bwa samse \
+            {input.ref:q} \
+            "$tmp_sai" \
+            {input.fq:q} \
+            2>> {log:q} \
+        | samtools view \
+            -@ {threads} \
+            -b \
+            -F {params.exclude_flags} \
+            -o {output.bam:q} \
+            - \
+            2>> {log:q}
+        """
+
+# -----------------------------------------------------------------------------
+# Step 2: convert each source's candidate alignments back to compressed FASTQ.
+# -----------------------------------------------------------------------------
+
+rule candidate_bam_to_fastq:
+    input:
+        bam=str(
+            PER_SOURCE_BAM_DIR
+            / "{source}"
+            / "{sample}.{source}.asian_rice_panel.primary_mapped.bam"
+        ),
+    output:
+        fastq=str(
+            PER_SOURCE_FASTQ_DIR
+            / "{source}"
+            / "{sample}.{source}.asian_rice_panel.primary_mapped.fastq.gz"
+        ),
+    threads: 4
+    resources:
+        mem_mb=8000,
+        runtime="2h",
+        slurm_partition="compregular",
+    log:
+        str(LOG_DIR / "bam_to_fastq" / "{source}" / "{sample}.log"),
+    shell:
+        r"""
+        set -euo pipefail
+
+        mkdir -p \
+            "$(dirname {output.fastq:q})" \
+            "$(dirname {log:q})"
+
+        tmp_fastq="{output.fastq}.tmp"
+
+        cleanup() {{
+            rm -f "$tmp_fastq"
+        }}
+        trap cleanup EXIT
+
+        (
+            samtools fastq \
+                -@ {threads} \
+                -n \
+                {input.bam:q} \
+            | gzip -c > "$tmp_fastq"
+        ) 2> {log:q}
+
+        mv "$tmp_fastq" {output.fastq:q}
+        """
+
+
+# -----------------------------------------------------------------------------
+# Step 3: concatenate the three candidate FASTQs. There is deliberately no
+# IRGSP remapping, duplicate removal, or MAPQ30 filtering after this rule.
+# -----------------------------------------------------------------------------
+
+rule merge_candidate_fastqs:
+    input:
+        fastqs=get_candidate_fastqs,
+    output:
+        fastq=str(
+            COMBINED_FASTQ_DIR
+            / "{sample}.oryza_candidates.combined.fastq.gz"
+        ),
+    threads: 1
+    resources:
+        mem_mb=2000,
+        runtime="1h",
+        slurm_partition="compregular",
+    log:
+        str(LOG_DIR / "merge_fastq" / "{sample}.log"),
+    shell:
+        r"""
+        set -euo pipefail
+
+        mkdir -p \
+            "$(dirname {output.fastq:q})" \
+            "$(dirname {log:q})"
+
+        tmp_fastq="{output.fastq}.tmp"
+
+        cleanup() {{
+            rm -f "$tmp_fastq"
+        }}
+        trap cleanup EXIT
+
+        (
+            gzip -cd {input.fastqs:q} \
+            | gzip -c > "$tmp_fastq"
+        ) 2> {log:q}
+
+        mv "$tmp_fastq" {output.fastq:q}
+        """
