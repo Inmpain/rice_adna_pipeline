@@ -76,13 +76,14 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
         │
         ▼
 ① 位点合集 = 29M_3k(PLINK) ∩ 6.7M_720(EIGENSTRAT)
-   两者格式不同，需要先统一格式再求交集：
-   a) 用 EIGENSOFT `convertf` 把 `29M_3k`(PLINK bed/bim/fam)转成EIGENSTRAT
-      (跟 6.7M_720 已经是的格式统一，也是smartpca的原生输入格式)
+   两者格式不同，需要先统一格式再求交集(染色体命名已确认一致、都是裸数字
+   1-12，见3.1；REF/ALT方向相反但mergeit能自动处理，见3.1)：
+   a) 用 EIGENSOFT `convertf` 把 `29M_3k`(PLINK bed/bim/fam，用原始裸数字
+      染色体版`NB_final_snp.bim.orig`)转成EIGENSTRAT(跟 6.7M_720 已经是的
+      格式统一，也是smartpca的原生输入格式)
    b) 用 EIGENSOFT `mergeit` 在两个EIGENSTRAT数据集之间按染色体+物理位置
-      (以及等位基因方向)求交集，产出合并后的panel
-   (前提：两边坐标系必须一致，见1.2的待确认项——mergeit本身不会告诉你
-   "坐标系不一致"，只会给出一个异常小的交集，容易被误当成"正常结果")
+      求交集，自动纠正两边A1/A2顺序颠倒的问题，并剔除strand-ambiguous
+      (A/T、C/G)位点，产出合并后的panel
         │
         ▼
 ② 对每个古代样本单独求交集：
@@ -105,15 +106,31 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
 
 ## 3. 待确认/待办(按优先级)
 
-1. **【最优先】确认两个panel坐标系一致**：
-   ```bash
-   zcat /home/scratch/yinmt202607/db/29M_3k/NB_final_snp.bim.gz | head
-   head /home/scratch/yinmt202607/db/6.7M_720/asn720.6m.snp
-   ```
-   看染色体命名(是否都是`chr01`风格、还是一个`chr01`一个`1`)、位置数值量级
-   是否都落在IRGSP1.0/MSU7对应染色体长度范围内。不确认这点，`mergeit`求
-   交集不会报错，只会默默给出一个异常小的交集，容易被当成"正常结果"接受。
-2. **确认 `6.7M_720` 和 `asn720data` 的关系**：
+### 3.1 坐标系核对结果(已用 `scripts/ecotype_pca/check_ref.py` 完成)
+
+**染色体命名**：`29M_3k`原始bim(裸数字1-12) 与 `6.7M_720`(`asn720.6m.snp`，
+同样是裸数字1-12) **命名方式一致**——之前把`NB_final_snp.bim`手动改成过
+`chr01`风格(`NB_final_snp.bim.chrfix`一类)，**这一步是多余的、不需要**，
+后续统一使用原始的 `NB_final_snp.bim.orig`(裸数字版)即可，不要用改过
+染色体名的那份。
+
+**REF/ALT等位基因方向**：
+- `29M_3k`(`NB_final_snp.bim`，200/200抽查)：**A2=REF, A1=ALT**，非常干净，
+  完全符合PLINK从VCF导入的标准默认约定。
+- `6.7M_720`(`asn720.6m.snp`，200个位点抽查)：**A1=REF, A2=ALT 占183/200
+  (91.5%)**，跟29M_3k方向相反。⚠️ 剩下17/200(8.5%)不符合这个反向规律，
+  不是单纯的"顺序颠倒"能解释的，可能是720面板内部个别位点的数据质量问题，
+  暂不处理，等mergeit真正跑起来后对照它自己的匹配/翻转/丢弃日志再回头看
+  这17个位点会不会落在"丢弃"名单里。
+- **两个panel的REF/ALT方向确实相反，但这不阻塞mergeit**：EIGENSOFT的
+  `mergeit`按坐标匹配后会自行比较两边的等位基因集合(不依赖谁被记成A1/A2)，
+  能自动识别并纠正这种顺序颠倒，不需要手动交换720的两列。真正无法靠工具
+  自动解决的只有A/T、C/G这类strand-ambiguous位点，标准做法是合并前直接
+  剔除，见3.2。
+
+### 3.2 待办(按优先级)
+
+1. **确认 `6.7M_720` 和 `asn720data` 的关系**：
    ```bash
    head /home/scratch/yinmt202607/db/6.7M_720/asn720.6m.ind
    head /home/scratch/yinmt202607/asn720data/asn720.pop.fam
@@ -122,26 +139,38 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
    (见1.2节，文件名前缀已经很提示，但没有逐条核实过)。如果确认一致，
    `file_path.md`里"与16个angkor样本的关系尚未最终确认"这条注记直接继承
    过来即可，不用重新走一遍确认流程。
-3. **格式统一 + 求交集**(1-2确认无误后再做，顺序不能反)：
+2. **格式统一 + 求交集**：
    ```bash
-   # a) 29M_3k 解压 + convertf 转 EIGENSTRAT
+   # a) 29M_3k 用原始(裸数字染色体)bim 转 EIGENSTRAT，不要用chr01改名版
    cd /home/scratch/yinmt202607/db/29M_3k
-   gunzip -k NB_final_snp.bed.gz NB_final_snp.bim.gz NB_final_snp.fam.gz
-   # 写 convertf 的 par 文件(genotypename/snpname/indivname 指向PLINK三件套,
-   # outputformat EIGENSTRAT), 然后:
+   cat > par.PLINK.EIGENSTRAT << 'PAREOF'
+   genotypename:    NB_final_snp.bed
+   snpname:         NB_final_snp.bim.orig
+   indivname:       NB_final_snp.fam
+   outputformat:    EIGENSTRAT
+   genotypeoutname: NB_final_snp.eigenstratgeno
+   snpoutname:      NB_final_snp.snp
+   indivoutname:    NB_final_snp.ind
+   familynames:     NO
+   PAREOF
    convertf -p par.PLINK.EIGENSTRAT
 
-   # b) mergeit 合并 29M_3k(转换后) 与 6.7M_720，取共享位点
+   # b) 用 scripts/ecotype_pca/check_ref.py 再核对一次转换后的.snp，
+   #    确认convertf本身没有把A1/A2顺序转错
+   python3 check_ref.py NB_final_snp.snp snp 200
+
+   # c) mergeit 合并 29M_3k(转换后) 与 6.7M_720，剔除strand-ambiguous
+   #    位点(A/T、C/G)，取共享位点
    mergeit -p par.MERGE
    ```
-4. **旱稻/水稻(或至少 indica/aus/japonica/aromatic 亚群)标签来源仍未解决**——
+3. **旱稻/水稻(或至少 indica/aus/japonica/aromatic 亚群)标签来源仍未解决**——
    这是 `docs/3krgp_integration_and_simulation_prep.md` 待办第4条就已经标注
    的老问题("passport分类表下载(SNP-Seek)—— PCA路径最大卡点")，SNP-Seek
    官网前端目前下线，需要找替代来源(比如 GigaDB 上的 3K RGP 论文补充材料)。
    没有这份标签，PCA做出来也没法解释哪个方向是旱稻哪个是水稻。这一步不
-   阻塞1-3，可以并行找。
-5. pseudo-haplotype 调用脚本、smartpca 具体参数(尤其是 `-lsqproject` 相关
-   配置)还没写，等1-3项确认完再动手，避免在错误坐标系/面板上重复返工。
+   阻塞1-2，可以并行找。
+4. pseudo-haplotype 调用脚本、smartpca 具体参数(尤其是 `-lsqproject` 相关
+   配置)还没写，等1-2项确认完再动手，避免在错误坐标系/面板上重复返工。
 
 ## 4. 与 besthit 分支的关系
 
