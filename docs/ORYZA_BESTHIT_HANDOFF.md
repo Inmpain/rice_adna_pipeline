@@ -1,7 +1,8 @@
 # Oryza competitive mapping / best-hit 接手说明
 
-更新时间：2026-08-05（本次更新：把 best-hit 阶段从设计到服务器实跑、debug、
-结果分析、以及下游三条工作线的讨论全部并入，供交接给另一个 AI / 协作者使用）
+更新时间：2026-08-05（第二次更新：acc2taxid Oryza覆盖度诊断结果出来后，
+证伪了最早"数据库野生稻缺失"的假设，改用"损伤窗口固定长度 vs 读长"这个
+新证据更充分的假说，相应重排了第7/8/9节的优先级）
 
 > 读这份文档前提：你没有服务器直接执行权限，所有服务器端命令的输出都需要
 > 人类协作者手动跑了贴回来。不要假设你能直接看到服务器文件系统。
@@ -10,14 +11,22 @@
 
 Best-hit 脚本（`oryza_besthit_damage_filter.py` + `submit_oryza_besthit.sh`）
 已经在服务器上实际跑通（3个样本里的1个做过1000-read smoke test，其余2个mapping
-已完成但besthit还没跑全量）。脚本本身没有已知 bug 了（过程中发现并修复了3个）。
-**当前卡点不是代码，是方法论**：best-hit 的判定完全依赖 acc2taxid 数据库里
-Oryza 属参考基因组的覆盖面，而现在这个覆盖面大概率只有 *O. sativa*（野生稻
-*rufipogon*/*nivara* 有没有、有多少条 contig，这个诊断还没做完，见第7节）。
-smoke test 的实际数字（第6节）显示"输赢边界"高度集中在差1个编辑距离，这个
-模式本身就是"参考单一化"的间接证据。**在把这个诊断做完、并且视情况把
-`db/3k/wild/` 下140+个野生稻/近缘种组装并入数据库之前，不建议去调
-KEEP/REJECT 的判定阈值——那是在一个已知有偏的比较基础上调参，治标不治本。**
+已完成但besthit还没跑全量）。脚本本身没有已知 bug 了（过程中发现并修复了3个，
+见5.6）。**当前卡点不是代码**。
+
+**方法论上走过一轮弯路，已经纠正，写在这里避免下一个人重复踩**：最早怀疑是
+"acc2taxid 数据库里 Oryza 参考基因组覆盖不够、大概率只有 sativa"——**这个
+假设已经用实测数据证伪**（见7.1）：Oryza 属18个已知种在数据库里普遍有几十到
+几百条 contig，*rufipogon*(717条) 反而比 *sativa*(96+15=111条) 覆盖更好。
+真正吻合观测数据的假说是**末端损伤校正窗口（`--damage-window`默认5bp）相对
+读长是固定的，读长越长、两端5bp之外"没资格被校正"的中段就越大，累积一个
+额外错配（无论是真实SNP、非末端损伤、还是测序错误）的概率也越高**——
+smoke test里"差1个编辑距离惜败"的541条read，均值/中位数长度（~68bp）明显
+比"打平守住KEEP"的103条read（~62bp）更长，方向和这个假说完全吻合（见6.2）。
+**这个假说还差最后一步验证**：这批样本有没有做过标准的损伤衰减曲线分析
+（末端N个位置的C→T/G→A频率随距离衰减的图，mapDamage风格），衰减到背景水平
+大概在多少bp——如果实际损伤延伸远超5bp，说明`--damage-window`设得太窄，
+这是下一个人接手后第一件要确认的事（见7.5）。
 
 ## 1. 项目背景
 
@@ -312,62 +321,108 @@ best_oryza_adjusted_NM`，负值=Oryza更差）：
 打平(差0): 98个   Oryza真正赢(差1): 2个
 ```
 
-**REJECT(nonoryza_better) 里排名第一的非Oryza物种 top20**（taxid，还没转学名，
-需要用 names.dmp 查）：
+**REJECT(nonoryza_better) 里排名第一的非Oryza物种 top20**（taxid → 学名，
+已用 names.dmp 逐条核实）：
 ```
-1711249(37) 145626(31) 519541(29) 13415(26) 223100(23) 2790670(19) 126911(19)
-103762(18) 4682(13) 322858(13) 3077(12) 3759(11) 192012(9) 9872(8) 56866(8)
-1709936(8) 988163(7) 641091(7) 980011(6) 39329(6)
+1711249  37  Eucalyptus dawsonii        桉树
+145626   31  Bradybaena similaris       陆生蜗牛
+519541   29  Geodia barretti            深海海绵
+13415    26  Chamaecyparis obtusa       扁柏(针叶树)
+223100   23  Orobanche coerulescens     列当(寄生植物)
+2790670  19  Closterium sp. NIES-67     新月藻(藻类)
+126911   19  Ammopiptanthus mongolicus  沙冬青(灌木)
+103762   18  Zizania palustris          北美菰(野生稻近缘属，唯一说得通的)
+4682     13  Allium sativum             大蒜
+322858   13  Diplosoma virens           海鞘(海洋无脊椎动物)
+3077     12  Chlorella vulgaris         小球藻
+3759     11  Prunus yedoensis           樱花
+192012    9  Mikania micrantha          薇甘菊(藤本)
+9872      8  Odocoileus hemionus        骡鹿(哺乳动物)
+56866     8  Luffa acutangula           丝瓜
+1709936   8  Eurotiomycetes sp.         真菌
+988163    7  Tiliacea citrago           蛾类
+641091    7  Trididemnum clinides       海鞘
+980011    6  Bidens hawaiensis          鬼针草
+39329     6  Lavandula angustifolia     薰衣草
 ```
-（这份是 taxid，之前有一份对应学名的旧版本 top1 结果，含 *Eucalyptus
-dawsonii* / *Zizania palustris*（近缘野生稻属）/ *Bradybaena similaris*（陆生
-蜗牛）/ *Geodia barretti*（深海海绵）/ *Chamaecyparis obtusa* / *Mikania
-micrantha* / *Pogostemon cablin* / *Orobanche coerulescens* / *Bidens
-hawaiensis* / *Closterium sp.*（藻类）/ *Brachypodium stacei*（禾本科模式种）
-/ *Ammopiptanthus mongolicus* / *Diplosoma virens*（海鞘）/ *Prunus
-yedoensis* / 两种蛾类/石蛾 / *Gossypium australe* / *Allium sativum* / *Chlorella
-vulgaris* 等——**taxid列表和学名列表是否完全对应没有逐条核实过**，只是同一批
-分析里前后两次查询，接手时建议重新跑一次、taxid和学名一起输出，别假设两份
-列表严格对应）
+这份名单在生物学上没有一致性——深海海绵、两种海鞘、陆生蜗牛、北美骡鹿，跟
+东南亚考古水稻沉积样本对不上号，除了 *Zizania palustris*（野生稻近缘属）之外
+基本看不出真实污染的规律。**这是判断"惜败"read性质的关键证据**：如果真是
+参考基因组缺失导致的误判，输给的应该是生物学上说得通的近缘种；现在这个
+名单更像是"短片段靠概率撞上129个shard里某个不相关物种的某段序列"，见6.2。
 
-### 6.1 这些数字说明什么
+### 6.1 acc2taxid 覆盖度诊断结果（第7.1节问题，已有答案）
 
-1. **输赢边界高度集中在"差1"**：63%的REJECT只差1个编辑距离，98%的KEEP是
-   刚好打平——说明多数候选read的"是不是Oryza"这个信号本身就很弱，卡在最容易
-   受参考基因组完整度影响的区间。
-2. **这个margin的杠杆效应极大**：如果把判定从"打平"放宽到"差1也算"
-   （margin=1），KEEP数会从103跳到644（1000条里的64%）——这不是微调，是量级
-   变化，说明选哪个边界现在还不是"调参数"层面的事，而是要先解决参考基因组
-   覆盖面的问题（见下）。
-3. **Top1非Oryza物种名单里混着两类**：一类生物学上说得通（Zizania=野生稻近
-   缘属、Brachypodium=禾本科模式种、其他植物），另一类很奇怪（深海海绵、
-   陆生蜗牛、海鞘、蛾类）——这类不像会是真污染，更可能是数据库/acc2taxid层面
-   的系统性问题，或者是低复杂度/保守序列在多个物种间普遍匹配导致的噪声。
-4. **核心假说（待验证）**：现在"跟Oryza比对得好不好"基本等于"跟*O.
-   sativa*这一个参考比对得好不好"（因为数据库里大概率没有/很少野生稻参考）。
-   末端损伤校正只扣"古DNA特有的末端脱氨基信号"，不会、也不能区分"这条
-   read有真实的生物学分化（野生型血统/古代原始驯化稻/别的水稻谱系）"和
-   "这条read根本不是水稻"——这两种情况现在被同等地算作普通错配、拉高NM。
-   如果古代样本的水稻谱系本身跟现代sativa参考有真实遗传分化，这些read会被
-   系统性地判成"输给非水稻竞争者"，即便它们其实是水稻。
+Oryza 属18个已知种在 `all_wgs_asian_irgsp.acc2taxid` 里的 contig 数（用
+`nodes.dmp` 里 parent==4527 找到全部种级taxid，逐个数 acc2taxid 里精确匹配
+的行数；*sativa* 另外加了亚种级taxid 39946/39947/1050722/1080340/2998809
+的计数，只有39947=japonica有15条，其余0条）：
 
-## 7. 待确认的开放问题（还没拿到答案，是当前最优先的工作）
-
-### 7.1 acc2taxid 里 Oryza 属各物种的实际覆盖度
-
-```bash
-ACC2TAXID=/home/scratch/yinmt202607/db/asian_rice_panel_index/all_wgs_asian_irgsp.acc2taxid
-NODES=/home/database/ref20250728/taxonomy_CPH/ncbi/20250530/nodes.dmp
-NAMES=/home/database/ref20250728/taxonomy_CPH/ncbi/20250530/names.dmp
-
-awk -F'|' '{gsub(/[\t ]/,"",$1); gsub(/[\t ]/,"",$2); if($2=="4527") print $1}' "$NODES" > /tmp/oryza_species_taxids.txt
-awk -F'|' '$0 ~ /scientific name/{gsub(/[\t ]/,"",$1); gsub(/^[\t ]+|[\t ]+$/,"",$2); print $1"\t"$2}' "$NAMES" | grep -Ff /tmp/oryza_species_taxids.txt
-while read -r tid; do
-  n=$(awk -F'\t' -v t="$tid" '$3==t' "$ACC2TAXID" | wc -l)
-  echo -e "${tid}\t${n}"
-done < /tmp/oryza_species_taxids.txt
 ```
-**这条命令给了用户，用户还没跑/没贴回结果。这是当前第一优先级的诊断。**
+4528  Oryza longistaminata    905
+4529  Oryza rufipogon         717   <- 野生稻，覆盖很好
+4530  Oryza sativa             96 (+15 japonica = 111)
+4532  Oryza australiensis      60
+4533  Oryza brachyantha        60
+4534  Oryza latifolia          78
+4535  Oryza officinalis        91
+4536  Oryza nivara             26   <- 野生稻，有但不算多
+4537  Oryza punctata           61
+4538  Oryza glaberrima         60  (非洲栽培稻)
+40148 Oryza glumipatula        47
+40149 Oryza meridionalis       12
+52545 Oryza alta               24
+63629 Oryza minuta            189
+65489 Oryza barthii            51
+77588 Oryza coarctata         450
+110451 Oryza schlechteri      119
+127571 Oryza malampuzhaensis  198
+```
+
+**结论：这个假说被证伪**。*sativa* (111条) 不但不缺，反而是覆盖度偏低的
+那一档——*rufipogon*(717)、*longistaminata*(905)、*coarctata*(450) 等好几个
+种覆盖度都远高于sativa。"数据库里野生稻/近缘种缺失"不是"差1惜败"这个模式
+的解释，第8.1节原本"优先扩库"的建议已经不成立，改成"优先查损伤窗口"
+（见6.2、7.5、8.1）。
+
+### 6.2 差1惜败的read为什么会输：不是短，是长（新发现，推翻了最早的猜测）
+
+最早怀疑"惜败"read是不是偏短（短片段信息量少、更容易被噪声压过），实测
+结果**方向相反**：
+
+```
+                均值(bp)  中位数(bp)  n
+差1惜败(REJECT)   ~68.5      ~68      541
+KEEP(打平守住)    ~62.3      ~61      103
+```
+
+（原始 `top10_species.tsv.gz` 是一条read多行的审计表，第一次按行统计长度会
+被"这条read命中了多少个物种"放大，必须先按read_name去重再统计——这是个
+真实踩过的坑，两组的原始"行数"分别是541条read共约6778行、103条read共约
+1225行，去重后总数才分别对上541/103，接手时如果要重跑这类分析记得先去重）
+
+**长而不是短的read更容易惜败，机制上的解释**：`--damage-window` 固定只看
+读长两端各5bp，超出这个范围的任何替换（不管是没修完的非末端损伤、真实的
+生物学SNP、还是测序错误）都没资格被 `adjusted_NM` 扣除，会原样拉高分数。
+读长越长，两端5bp加起来占全长的比例越小，"没资格被校正"的中段就越大，
+累积一个额外错配、从而在adjusted_NM上被非Oryza竞争者反超的概率也就越高。
+这个方向和实测数据完全吻合。
+
+**这个假说还差一步验证**：损伤窗口5bp这个默认值有没有校准过？如果这批样本
+的真实损伤信号（末端C→T/G→A频率）衰减到背景水平的距离明显超过5bp（比如
+mapDamage风格分析常见的10-15bp甚至更远，取决于样本降解程度），那5bp的窗口
+本身就设窄了，会系统性地对长读长不利——这不是"要不要加margin"的问题，是
+损伤校正窗口参数本身需要重新校准。有没有现成的损伤曲线分析（不管是这批
+angkor样本还是这个项目别的样本）？如果没有，可以从BAM直接算一个粗略版本
+（末端N个位置的C→T/G→A频率 vs 距末端距离），不需要跑完整mapDamage2。
+见7.5的具体诊断命令。
+
+## 7. 待确认的开放问题
+
+### 7.1 ~~acc2taxid 里 Oryza 属各物种的实际覆盖度~~ 已回答，见6.1
+
+结论：Oryza属18个种普遍有几十到几百条contig，*sativa*(111条)不缺，反而是
+偏低的一档。这个问题已解决，不再是待办。
 
 ### 7.2 `db/3k/wild/` 140+ 野生稻组装的物种身份
 
@@ -382,7 +437,7 @@ for f in $(ls /home/scratch/yinmt202607/db/3k/wild/ | head -5); do
   grep -w "$sid" /home/scratch/yinmt202607/db/3k/tmp/3kall_variety_map.tsv
 done
 ```
-**同样给了用户、还没有结果**。这份 `file_path.md` 里只有一行目录清单提及
+**给了用户、还没有结果**。这份 `file_path.md` 里只有一行目录清单提及
 （`db/3k/wild/{SampleID}.transfer.merge.chr.fasta  # 140+野生稻/近缘种染色体级
 组装基因组`），仓库里没有任何地方写明这140+个样本具体是哪个物种/亚群——
 需要用 `3kall_variety_map.tsv`（3K RGP官方样本元数据表，含
@@ -390,6 +445,10 @@ VARIETY_INDEX/NAME/IRIS_ID）交叉查询才能确认。**注意**：3K Rice Gen
 Project官方主体是3024份**栽培稻**（indica/aus/aromatic/japonica等亚群），
 不是野生稻——这批 `wild/` 目录既然单独命名和别的3K数据分开放，大概率是
 额外补充的野生近缘种outgroup，但没有manifest佐证之前不要假设。
+
+**优先级下调**：这条本来是基于"数据库野生稻缺失"假说排的第一优先级，
+现在7.1已经证明acc2taxid里Oryza属覆盖面本身就很宽，这条不再紧急，可以
+按需做，不是阻塞项。
 
 ### 7.3 `--oryza-taxids` 是否真的是 species rank
 
@@ -416,36 +475,52 @@ Smoke test 日志里如果有 `[warn] N alignments had no usable SEQ/MD` 这一�
 是这个脚本的内存大头，量级可能到GB级别，具体数字取决于这两个文件的真实大小，
 需要 `seff` 或 `wc -l` 实测。
 
+### 7.5（新增，当前最优先）`--damage-window=5` 是否偏窄——需要实测损伤衰减曲线
+
+见0/6.2的推理：差1惜败的read系统性比KEEP的read长，机制上最可能的解释是
+固定5bp窗口对长读长不利。这个假说要成立，前提是这批样本的真实损伤信号确实
+延伸超过5bp。**先问用户/查项目历史**有没有现成的损伤曲线分析（mapDamage2
+或类似工具跑过的5'C→T / 3'G→A频率-vs-位置图，针对angkor这批样本或者项目
+里任何同批次测序的样本）。如果没有，可以从besthit的smoke test BAM直接估算
+一个粗糙版本（只需要 KEEP 结果里"确认是水稻"的read，避免非水稻read混进来
+干扰损伤信号统计）：
+
+```bash
+# 思路：besthit_oryza.fastq.gz 里的read名字，去原始 by_sample BAM 里找到它们
+# 的primary alignment，统计末端N个位置(比如N=15，覆盖比默认5bp更远的范围)
+# 的错配是不是C->T(5'端)/G->A(3'端)富集，并且看这个富集程度随距离衰减到
+# 背景水平大概在第几个bp——这个可以另写一个小脚本，不在
+# oryza_besthit_damage_filter.py现有功能范围内，需要新写。
+```
+如果衰减距离明显超过5bp（比如10-15bp），建议把 `--damage-window` 调大，
+重新跑 smoke test 看"差1惜败"的541条里有多少会因此翻盘成KEEP，再判断这
+是不是6.2这个模式的完整解释，还是只能解释一部分。
+
 ## 8. 后续三条工作线（讨论过，还没定最终方案）
 
 这三条是用户提出的下一步方向，讨论了可行性和优先级，但都**还没有开始实际
 写代码/跑分析**，需要先决定做哪个/什么顺序。
 
-### 8.1（最优先，和第7节强相关）Oryza 参考基因组数据库整理/扩充
+### 8.1（优先级已下调，见7.1）Oryza 参考基因组数据库整理/扩充
 
-现状：`file_path.md`（main分支）里明确标注多处 ⚠️，说明参考基因组的整体情况
-"还是很乱"（用户原话）：
+**这条原本排第一优先级，前提是"数据库野生稻缺失"——这个前提已经被7.1的
+实测数据证伪，所以不再是紧急项**，但参考基因组体系本身"还是很乱"（用户
+原话）这个观察依然成立，值得找机会理一遍，只是不再挡着best-hit这条线：
+
 - `db/16/`（资源组A，NCBI datasets 16基因组+Liftoff注释）和 `db/3k/`（资源组B，
   3K Rice Genome Project数据）是**两个不同来源**，关系没有理清。
 - `asn720data/`（720份现代/近现代品种PLINK面板）跟16个angkor古代样本的关系
   "尚未最终确认"（是否包含、是否capture panel来源）。
-- `db/3k/wild/` 这140+个野生稻/近缘种组装身份不明（见7.2）。
+- `db/3k/wild/` 这140+个野生稻/近缘种组装身份不明（见7.2，优先级已下调）。
 - 已经有一个独立的 `results/07.wild_rice_alignment/`（minimap2 asm10 预设，
   野生稻组装比对到IRGSP，用于paftools.js call变异，标注"进行中"）——这是
   另一条已经在跑的、跟competitive mapping平行的分析线，不要跟best-hit阶段
   混淆，但如果这些wild genome的minimap2比对已经产出了变异，可能可以复用来
   确认这些野生稻组装的物种/谱系身份。
 
-**建议的下一步（不是最终决定，需要用户拍板）**：
-1. 先做完第7.1/7.2节的诊断，拿到"acc2taxid里野生稻覆盖度"和"db/3k/wild/
-   140+样本的物种身份"两组硬数据。
-2. 如果确认这批野生稻组装可用，把它们**作为第132个（或更多个）competitive
-   mapping数据库**加进去——这比重跑全部131个库便宜得多，只需要给已经跑完
-   mapping的样本再补一次新数据库的比对，合并进现有的 `by_sample/*.name_sorted.bam`，
-   然后重跑 besthit（不需要重新mapping其他131个库）。
-3. 扩库之后再回头看第6节那个"打平/差1"的margin问题是否自然缓解——如果多数
-   "惜败"read其实是能在扩库后找到更匹配的野生稻/近缘种参考，margin问题可能
-   不需要再单独调参就基本解决。
+**现在真正优先级最高的是7.5（损伤窗口校准）**，不是这条。这条可以往后放，
+等7.5的诊断做完、确认"差1惜败"主要是损伤窗口问题而不是别的原因之后，再
+决定要不要额外花精力理清参考基因组体系。
 
 ### 8.2 时间序列选择信号扫描（selection scan）
 
@@ -505,19 +580,24 @@ DTH8/Ghd8经典大片段缺失（3024份现代品种里5.4%携带这个缺失，
    到时候再具体设计怎么从探针捕获的reads里判定SV有无（比如split-read/
    discordant-pair证据，还是简单的深度骤降，取决于具体是哪种SV）。
 
-## 9. 给下一个接手者的具体待办（按优先级）
+## 9. 给下一个接手者的具体待办（按优先级，本次更新后已重排）
 
-1. 【诊断，最优先】跑第7.1节的acc2taxid Oryza覆盖度诊断命令，拿到结果。
-2. 【诊断】跑第7.2节的 `db/3k/wild/` 物种身份诊断命令，拿到结果。
-3. 【诊断，可选但建议做】第7.3（taxid rank校验）、7.4（MD tag覆盖率完整
-   log、`seff`内存实测）。
-4. 根据1-2的结果决定：野生稻参考要不要扩库（见8.1），要扩的话具体怎么建
-   索引、怎么接入现有的132个数据库体系。
-5. 扩库（如果做）之后重新评估best-hit的KEEP/REJECT margin（见第6节的
-   "打平vs差1"讨论），再决定要不要在 `oryza_besthit_damage_filter.py` 里
-   加一个margin参数（当前是硬编码 `<=`，没有margin概念）。
-6. 对剩余13个还在mapping队列里的样本，随mapping进度用 `submit_oryza_besthit.sh
-   submit all` 陆续跑besthit。
-7. 8.2（selection scan）和8.3（57基因SV判生态型）都还没真正开始，8.3的
+1. 【诊断，当前最优先】第7.5节：确认这批样本有没有做过损伤衰减曲线分析
+   （mapDamage风格），衰减到背景水平大概多少bp。如果没有，从BAM快速估算
+   一版粗略的。**这是解释"差1惜败"541条read的核心假说，比其余诊断都优先**。
+2. 如果7.5证实5bp窗口偏窄，评估调大 `--damage-window` 后重新跑 smoke test，
+   看541条里有多少翻盘成KEEP，判断这是完整解释还是部分解释。
+3. 【诊断，优先级降低，非阻塞】7.2（`db/3k/wild/`物种身份）、7.3（taxid
+   rank校验）、7.4（MD tag覆盖率完整log、`seff`内存实测）——都可以做，但
+   不再挡着best-hit往前走。
+4. 只有在7.5的损伤窗口问题排查/调整完之后，才回头评估要不要给
+   `oryza_besthit_damage_filter.py` 加一个margin参数（当前硬编码`<=`，没有
+   margin概念）——在没排除损伤窗口这个更根本的原因之前，先调margin是在
+   错的层面上打补丁。
+5. 对剩余13个还在mapping队列里的样本，随mapping进度用 `submit_oryza_besthit.sh
+   submit all` 陆续跑besthit（这条不依赖1-4，可以随时做）。
+6. 8.1（参考基因组体系整理）优先级已下调，不再是阻塞项，有余力再做。
+7. 8.2（selection scan）和8.3（57基因SV判生态型）都还没真正开始。8.3的
    覆盖度QC是个独立、低成本、能快速出结论的子任务，可以和上面几条并行推进；
-   8.2依赖更完整的genotype pipeline，优先级排后面。
+   8.2依赖更完整的genotype pipeline，且同样会受损伤/参考质量问题影响，
+   优先级排在7.5之后。
