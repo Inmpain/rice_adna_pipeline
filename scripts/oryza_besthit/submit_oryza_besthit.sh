@@ -85,6 +85,12 @@ Usage:
       re-run as more samples finish mapping -- already-finished besthit
       samples are skipped.
 
+  submit_oryza_besthit.sh local SAMPLE [SAMPLE ...] | local all
+      Same as submit, but runs sequentially in the foreground -- no sbatch,
+      no queue wait. Good for quick iteration/debugging. Aborts on the
+      first failing sample. Log still goes to
+      OUT_DIR/logs/<sample>.besthit.local.log (as well as the terminal).
+
   submit_oryza_besthit.sh merge
       Concatenate OUT_DIR/<sample>.summary.tsv (all samples that have run,
       finished or not) into OUT_DIR/besthit_summary.tsv. Run after jobs land.
@@ -321,6 +327,35 @@ run_submit() {
     echo "[submit] manifest: $manifest"
 }
 
+run_local() {
+    # Sequential, foreground, no sbatch -- same worker + .finished skip logic
+    # as run_submit, just without a SLURM job in between. Useful for quick
+    # iteration/debugging on a login node or an already-allocated interactive
+    # session. Aborts on the first failing sample (same fail-fast convention
+    # as the rest of this script) rather than silently skipping ahead.
+    [[ "$#" -ge 1 ]] || { usage >&2; exit 2; }
+    load_python_module
+    check_pysam
+    mkdir -p "$OUT_DIR" "$LOG_DIR"
+
+    local sample bam fastq log
+    for sample in "$@"; do
+        bam="$(bam_path "$sample")"
+        fastq="$(fastq_path "$sample")"
+        [[ -f "$bam" ]] || { echo "ERROR: BAM missing for $sample: $bam" >&2; exit 1; }
+        [[ -f "$fastq" ]] || { echo "ERROR: FASTQ missing for $sample: $fastq" >&2; exit 1; }
+
+        if [[ -f "${OUT_DIR}/${sample}.finished" ]]; then
+            echo "[local] $sample already finished, skipping"
+            continue
+        fi
+
+        log="${LOG_DIR}/${sample}.besthit.local.log"
+        echo "[local] running sample=$sample (foreground, no sbatch) -> $log"
+        run_worker "$sample" "$OUT_DIR" 2>&1 | tee "$log"
+    done
+}
+
 run_merge() {
     shopt -s nullglob
     local files=("$OUT_DIR"/*.summary.tsv)
@@ -365,6 +400,20 @@ case "${1:-}" in
             run_submit "${SAMPLES[@]}"
         else
             run_submit "$@"
+        fi
+        ;;
+    local)
+        shift
+        if [[ "${1:-}" == "all" ]]; then
+            discover_samples
+            [[ "${#SAMPLES[@]}" -gt 0 ]] || {
+                echo "ERROR: no *${BAM_SUFFIX}.finished markers under $BAM_DIR" >&2
+                exit 1
+            }
+            echo "[local] all: ${#SAMPLES[@]} samples with a finished mapping BAM"
+            run_local "${SAMPLES[@]}"
+        else
+            run_local "$@"
         fi
         ;;
     merge)
