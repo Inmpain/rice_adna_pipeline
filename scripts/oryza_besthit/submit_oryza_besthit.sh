@@ -79,6 +79,12 @@ Usage:
       Submit one full job per sample. Skips a sample if
       OUT_DIR/<sample>.finished already exists.
 
+  submit_oryza_besthit.sh submit all
+      Same, but auto-discovers every sample with a finished competitive-
+      mapping BAM under BAM_DIR (same discovery `check` uses). Safe to
+      re-run as more samples finish mapping -- already-finished besthit
+      samples are skipped.
+
   submit_oryza_besthit.sh merge
       Concatenate OUT_DIR/<sample>.summary.tsv (all samples that have run,
       finished or not) into OUT_DIR/besthit_summary.tsv. Run after jobs land.
@@ -93,7 +99,7 @@ timestamp() {
 
 load_python_module() {
     if command -v module >/dev/null 2>&1; then
-        module load python/ 2>/dev/null || true
+        module load python/ >/dev/null 2>&1 || true
     fi
     command -v python3 >/dev/null 2>&1 || {
         echo "ERROR: python3 not found on PATH" >&2
@@ -259,6 +265,7 @@ run_smoke() {
     job_id="$(sbatch \
         --parsable \
         "${SBATCH_COMMON[@]}" \
+        --export="ALL,PY_SCRIPT=${PY_SCRIPT}" \
         --job-name="orybh.smoke.${sample}" \
         --cpus-per-task="$JOB_CPUS" \
         --mem="${JOB_MEM_MB}M" \
@@ -300,6 +307,7 @@ run_submit() {
         job_id="$(sbatch \
             --parsable \
             "${SBATCH_COMMON[@]}" \
+            --export="ALL,PY_SCRIPT=${PY_SCRIPT}" \
             --job-name="orybh.${sample}" \
             --cpus-per-task="$JOB_CPUS" \
             --mem="${JOB_MEM_MB}M" \
@@ -347,7 +355,17 @@ case "${1:-}" in
         ;;
     submit)
         shift
-        run_submit "$@"
+        if [[ "${1:-}" == "all" ]]; then
+            discover_samples
+            [[ "${#SAMPLES[@]}" -gt 0 ]] || {
+                echo "ERROR: no *${BAM_SUFFIX}.finished markers under $BAM_DIR" >&2
+                exit 1
+            }
+            echo "[submit] all: ${#SAMPLES[@]} samples with a finished mapping BAM"
+            run_submit "${SAMPLES[@]}"
+        else
+            run_submit "$@"
+        fi
         ;;
     merge)
         run_merge
