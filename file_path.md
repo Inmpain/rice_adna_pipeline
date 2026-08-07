@@ -3,8 +3,12 @@
 > 本文档是整个项目的路径地图，每个目录都标注了**是什么、由哪个脚本产出、
 > 什么场景下需要用它**。新接手的人应该先读这份文档，再去看
 > `PROJECT_STATUS.md`(项目当前进度)和`decisions_log.md`(关键决策原因)。
+>
+> ⚠️ **本仓库还有3个未合并进main的工作分支**（`codex/oryza-screen-merge`、
+> `codex/oryza-competitive-mapping`、`codex/ecotype-pca-panel`），只读
+> main分支看不到完整现状。四分支横向汇总见 `docs/REPO_OVERVIEW_STATUS.md`。
 
-最后更新: 2026-08-05
+最后更新: 2026-08-07
 
 ---
 
@@ -32,9 +36,9 @@
 | `5.angkor_shotgun_finished/data/reads/` | shotgun原始reads(`{Library_ID}.prefiltered.IRGSP1.mapped.fq`) | 已经过预筛选比对到IRGSP1，不需要重新提取 |
 | `3.angkor_capture_panel1/data/reads/` | capture panel1原始reads(`*.bbduk.lowcomp_filtered.fq`) | 杂交捕获测序，已过bbduk低复杂度过滤 |
 | `7_angor_capture_panel2/data/reads/` | capture panel2原始reads | 同上 |
-| `4.mcp_reshotgun/data/reads/` | MCP reshotgun proxy样本 | **不属于本项目16个angkor古稻样本**，文件名格式`LV{数字}-LV{数字}-proxy...`(短横线)，跟真实panel文件`LV{数字}_RicePanel{1\|2}...`(下划线)不同，务必在任何统计脚本里显式排除 |
+| `4.mcp_reshotgun/data/reads/` | MCP reshotgun proxy样本 | **不属于本项目16个angkor古稻样本**，文件名格式`LV{数字}-LV{数字}-proxy...`(短横线)，跟真实panel文件`LV{数字}_RicePanel{1|2}...`(下划线)不同，务必在任何统计脚本里显式排除 |
 | `angkor_robot_library.txt` | 样本元数据总表 | 含`Library_ID`→`robot_sample_id`映射、`Depth`(考古地层深度,cm)、`Age`(公历年代)，跨度约公元1160-1981年 |
-| `asn720data/asn720.pop.{bed,bim,fam}` | 720份现代品种PLINK基因型 | 94974个SNP位点，⚠️与16个angkor样本的关系尚未最终确认(是否包含、是否capture panel来源) |
+| `asn720data/asn720.pop.{bed,bim,fam}` | 720份现代品种PLINK基因型 | 94974个SNP位点，⚠️与16个angkor样本的关系尚未最终确认(是否包含、是否capture panel来源)——**已在`ecotype-pca-panel`分支决定弃用**，改用`db/6.7M_720/asn720.6m.*` |
 
 ---
 
@@ -65,9 +69,9 @@ db/16/                               # 【资源组A】NCBI datasets 16基因组
 ├── asian_rice_panel_download/       # 原始下载(嵌套目录)
 └── asian_rice_panel/                # 扁平结构, 每个子目录含genome.fna+liftoff_from_msu7.gff3
     (genome1_IRGSP, genome4_N22, genome5_AZ, genome6_IR64, genome7_ARC,
-     genome8_LM, genome9_LX, genome10_KYG, genome11_LIMA, genome12_NABO,
-     genome13_PR106, genome14_KN, genome15_CM, genome16_GS,
-     genome27_MH63, genome28_ZS97)
+    genome8_LM, genome9_LX, genome10_KYG, genome11_LIMA, genome12_NABO,
+    genome13_PR106, genome14_KN, genome15_CM, genome16_GS,
+    genome27_MH63, genome28_ZS97)
 
 db/3k/                               # 【资源组B】3K Rice Genome Project数据
 ├── 16_3k/                           # 官方16参考基因组面板zip(与资源组A不同来源，未解压)
@@ -83,6 +87,15 @@ db/3k/                               # 【资源组B】3K Rice Genome Project数
 │   └── NB_DEL_mergesam_clustered.txt  # 解压后的DEL记录
 └── wild/
     └── {SampleID}.transfer.merge.chr.fasta  # 140+野生稻/近缘种染色体级组装基因组
+                                                # ⚠️物种身份未确认，见 ORYZA_BESTHIT_HANDOFF.md 第7.2节
+
+db/29M_3k/                           # 【ecotype-pca-panel分支用】3K RG 29mio biallelic SNP
+├── NB_final_snp.bed.gz / .bim.gz / .fam.gz   # 3024份材料，PLINK格式，与irgsp.fa坐标系一致
+
+db/6.7M_720/                         # 【ecotype-pca-panel分支用】720份样本，野生稻为主
+├── asn720.6m.geno / .ind / .snp     # EIGENSTRAT格式(smartpca原生输入格式)
+
+db/asian_rice_panel_index/all_wgs_asian_irgsp.acc2taxid  # 【besthit分支用】accession→taxid映射
 ```
 
 **5个早期近缘品种参考基因组**(Ensembl Plants下载，早于资源组A/B):
@@ -162,6 +175,8 @@ tests/param_matrix_bt2_vs_bwa/
 ├── scripts/           # 01-11号脚本(建目录→提取→建索引→比对→汇总→可视化)
 ├── 00.extraction/     # bt2_old(历史软链接) / bt2_new(新生成) / bwa(历史软链接)
 ├── 01.reads_combined/ # 三种提取方法各自的shotgun+panel整理结果
+│                      # ⚠️其中 01.reads_combined/bwa/ 是 codex/oryza-screen-merge
+│                      #   分支的输入来源
 ├── 02.final_mapping/  # 9个组合的最终BAM(2历史软链接+7新生成)
 ├── dup_recompute/     # 补算历史①②组合真实dup信息
 └── summary/           # 最终结果表+可视化PDF
@@ -174,11 +189,18 @@ tests/param_matrix_bt2_vs_bwa/
 
 ## 六、Git仓库结构(`github.com/Inmpain/rice_adna_pipeline`)
 
+⚠️ **本仓库有4个分支，以下只是main分支的结构**。另外3个分支
+（`codex/oryza-screen-merge`、`codex/oryza-competitive-mapping`、
+`codex/ecotype-pca-panel`）各自有独立的`docs/`和`scripts/`内容，
+不会出现在main分支里，需要单独切换查看。四分支汇总见
+`docs/REPO_OVERVIEW_STATUS.md`。
+
 ```
-rice_adna_pipeline/
+rice_adna_pipeline/ (main分支)
 ├── PROJECT_STATUS.md          # ⚠️已知问题: 曾被意外截断，只剩最后一次追加内容，需修复
 ├── docs/
 │   ├── file_paths.md                              # 本文档
+│   ├── REPO_OVERVIEW_STATUS.md                    # 四分支跨线现状汇总(新增)
 │   ├── decisions_log.md                           # 关键决策记录
 │   ├── research_goals.md                          # 四层研究目标拆解
 │   ├── GIT_USAGE.md                                # Git操作指南
@@ -234,6 +256,7 @@ git show <commit_hash>:PROJECT_STATUS.md > /tmp/old_version.md
 
 | 我想知道... | 去看... |
 |---|---|
+| **四个分支现在各自做到哪一步**（先看这个） | `docs/REPO_OVERVIEW_STATUS.md`(main分支，跨分支横向汇总) |
 | 项目现在做到哪一步、下一步该干什么 | `PROJECT_STATUS.md`(⚠️当前已损坏，需先修复) |
 | 为什么选了BWA而不是Bowtie2 | `docs/decisions_log.md` + `docs/09_extraction_mapping_matrix_final.md` |
 | 57基因命中数据为什么只有约2/3可信 | `docs/flank1kb_msa_exploration.md` |
@@ -243,3 +266,6 @@ git show <commit_hash>:PROJECT_STATUS.md > /tmp/old_version.md
 | 怎么在IGV里看数据 | `docs/IGV_visualization_guide.md` |
 | 某个脚本具体是干什么的 | `scripts/server_originals/`(真实脚本) 或
   `tests/param_matrix_bt2_vs_bwa/scripts/`(参数测试脚本) |
+| Oryza best-hit过滤(竞争性比对+古DNA损伤校正)进展 | 切到`codex/oryza-competitive-mapping`分支，读`docs/ORYZA_BESTHIT_HANDOFF.md` |
+| 旱稻/水稻生态型PCA判定进展 | 切到`codex/ecotype-pca-panel`分支，读`docs/ECOTYPE_PCA_PANEL.md` |
+| 候选Oryza FASTQ怎么合并的 | 切到`codex/oryza-screen-merge`分支，读`oryza_screen_merge/README.md` |
