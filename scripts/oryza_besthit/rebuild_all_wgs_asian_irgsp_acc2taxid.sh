@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# 真正重建 all_wgs_asian_irgsp.acc2taxid（不再是补丁式——2026-08-08确认了
+# 真实的三源合并配方，可以完整重建替换旧文件）。
+#
+# 三个源文件：
+#   1. WGS真核库taxid（独立大文件，406M，跟panel目录不在一起）：
+#      /home/database/ref20250728/taxonomy_CPH/wgs_eukaryota.acc2taxid
+#   2. 亚洲水稻panel taxid：<panel目录>/asian_rice_panel.acc2taxid
+#      （本脚本会先修正np7等12个基因组的taxid错标，见下方Step 1）
+#   3. IRGSP taxid：<panel目录>/irgsp.acc2taxid
+#      （本脚本只做统计报告，不自动改——格式和是否有同样错标问题还没验证过，
+#      见下方Step 2的输出，需要人工确认后再决定要不要修）
+#
+# 背景：docs/asian_rice_panel_reference_design_conversation.md +
+#       docs/ORYZA_BESTHIT_HANDOFF.md 第0.5节
+#
+# 用法：
+#   bash rebuild_all_wgs_asian_irgsp_acc2taxid.sh \
+#     --wgs /home/database/ref20250728/taxonomy_CPH/wgs_eukaryota.acc2taxid \
+#     --panel-dir /home/scratch/yinmt202607/db/asian_rice_panel_index \
+#     [--apply]
+# 默认dry-run，只统计不写文件；确认无误后加 --apply 才真正落盘替换。
+
+set -euo pipefail
+
+WGS=""
+PANEL_DIR=""
+APPLY=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --wgs) WGS="$2"; shift 2 ;;
+    --panel-dir) PANEL_DIR="$2"; shift 2 ;;
+    --apply) APPLY=1; shift ;;
+    *) echo "unknown arg: $1" >&2; exit 1 ;;
+  esac
+done
+
+if [[ -z "$WGS" || -z "$PANEL_DIR" ]]; then
+  echo "usage: $0 --wgs <wgs_eukaryota.acc2taxid路径> --panel-dir <asian_rice_panel_index目录> [--apply]" >&2
+  exit 1
+fi
+
+PANEL_ACC2TAXID="$PANEL_DIR/asian_rice_panel.acc2taxid"
+IRGSP_ACC2TAXID="$PANEL_DIR/irgsp.acc2taxid"
+MERGED_ACC2TAXID="$PANEL_DIR/all_wgs_asian_irgsp.acc2taxid"
+
+for f in "$WGS" "$PANEL_ACC2TAXID" "$IRGSP_ACC2TAXID"; do
+  [[ -f "$f" ]] || { echo "ERROR: 找不到 $f" >&2; exit 1; }
+done
+
+TS="$(date +%Y%m%d-%H%M%S)"
+
+echo "== Step 1: 修正 asian_rice_panel.acc2taxid 的taxid错标 =="
+FIXED_PANEL="$PANEL_DIR/asian_rice_panel.acc2taxid.fixed"
+awk 'BEGIN{FS=OFS="\t"}
+{
+    if ($1 ~ /^(np7|mh63|X24_kas|azu|arc|liuxu)\./) {
+        if ($3 != 4530) { changed++ }
+        $3 = 4530
+    }
+    else if ($1 ~ /^G25_ruf_(W1214|W0169|W1750|W3037|W1536|W1726|W2064)\./) {
+        if ($3 != 4529) { changed++ }
+        $3 = 4529
+    }
+    print
+}
+END { print "changed_lines=" (changed+0) > "/dev/stderr" }' "$PANEL_ACC2TAXID" > "$FIXED_PANEL"
+
+echo "-- 修正前后对比(只显示np7的，其余11个基因组同理) --"
+grep -E '^np7\.' "$PANEL_ACC2TAXID" | head -3
+echo "  ↓ 修正为 ↓"
+grep -E '^np7\.' "$FIXED_PANEL" | head -3
+
+echo ""
+echo "== Step 2: 检查 irgsp.acc2taxid 的taxid分布(不自动改，只报告) =="
+echo "-- irgsp.acc2taxid 前5行 --"
+head -5 "$IRGSP_ACC2TAXID"
+echo "-- irgsp.acc2taxid 第3列(taxid)分布 --"
+cut -f3 "$IRGSP_ACC2TAXID" | sort | uniq -c
+echo "⚠️ 如果上面全是4529(rufipogon)而不是4530(sativa)，说明irgsp.acc2taxid"
+echo "   也有同样的错标问题，需要另外处理——这个脚本目前不会自动修正它，"
+echo "   请把上面的输出贴回来确认后再决定"
+
+echo ""
+echo "== Step 3: 三源合并统计(dry-run先看行数，不代表最终结果) =="
+echo "wgs_eukaryota.acc2taxid 行数: $(wc -l < "$WGS")"
+echo "asian_rice_panel.acc2taxid(修正后) 行数: $(wc -l < "$FIXED_PANEL")"
+echo "irgsp.acc2taxid 行数: $(wc -l < "$IRGSP_ACC2TAXID")"
+if [[ -f "$MERGED_ACC2TAXID" ]]; then
+  echo "现有 all_wgs_asian_irgsp.acc2taxid 行数(即将被替换): $(wc -l < "$MERGED_ACC2TAXID")"
+fi
+
+if [[ "$APPLY" -eq 0 ]]; then
+  echo ""
+  echo "== DRY RUN 完成，没有写任何文件 =="
+  echo "确认上面的数字、np7修正结果、irgsp.acc2taxid的taxid分布都没问题后，"
+  echo "加 --apply 重跑一次才会真正落盘替换"
+  rm -f "$FIXED_PANEL"
+  exit 0
+fi
+
+echo ""
+echo "== Step 4 (--apply): 备份原文件，重建合并文件 =="
+[[ -f "$MERGED_ACC2TAXID" ]] && cp "$MERGED_ACC2TAXID" "$MERGED_ACC2TAXID.bak-$TS"
+cp "$PANEL_ACC2TAXID" "$PANEL_ACC2TAXID.bak-$TS"
+
+mv "$FIXED_PANEL" "$PANEL_ACC2TAXID"
+
+REBUILT="$MERGED_ACC2TAXID.rebuilt"
+cat "$WGS" "$PANEL_ACC2TAXID" "$IRGSP_ACC2TAXID" > "$REBUILT"
+mv "$REBUILT" "$MERGED_ACC2TAXID"
+
+echo "已完成。备份文件："
+[[ -f "$MERGED_ACC2TAXID.bak-$TS" ]] && echo "  $MERGED_ACC2TAXID.bak-$TS"
+echo "  $PANEL_ACC2TAXID.bak-$TS"
+echo "新 all_wgs_asian_irgsp.acc2taxid 行数: $(wc -l < "$MERGED_ACC2TAXID")"
