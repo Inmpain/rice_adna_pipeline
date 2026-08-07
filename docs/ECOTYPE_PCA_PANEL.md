@@ -11,10 +11,10 @@
 
 两个参考 panel 已经到位(见第1节实际路径)。坐标系核对已完成(见3.1)：染色体
 命名一致、REF/ALT方向虽相反但mergeit可自动处理；`asn720data`已决定弃用
-(密度太低)。convertf+mergeit 的 par 文件和执行脚本已写好并提交
-(`scripts/ecotype_pca/par.PLINK.EIGENSTRAT`、`par.MERGE`、
-`run_convert_merge.sh`，见3.2节step 2)，当前最优先的事是在服务器上跑这个
-脚本，把两个panel转成同一格式求交集，再动手写pseudo-haplotype调用脚本。
+(密度太低)。convertf 这步(29M_3k PLINK→EIGENSTRAT)已在服务器上验证跑通
+(2026-08-07，见3.2节step 2)：29,635,224个SNP、3024个样本转换前后完全一致，
+无丢失。当前最优先的事是接着跑 `run_convert_merge.sh` 剩下的 mergeit 那步
+(29M_3k转换结果 与 6.7M_720 求交集)，再动手写pseudo-haplotype调用脚本。
 
 ## 1. 数据库
 
@@ -144,16 +144,29 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
    bash run_convert_merge.sh
    ```
    脚本依次做三件事(对应下面a/b/c)：
-   - `par.PLINK.EIGENSTRAT`：29M_3k 用原始(裸数字染色体)bim 转 EIGENSTRAT，
-     不要用chr01改名版
+   - `par.PLINK.EIGENSTRAT`：29M_3k 用原始(裸数字染色体)bim 转 EIGENSTRAT。
+     **✅ 2026-08-07已在服务器验证跑通**，29,635,224个SNP、3024个样本转换
+     前后完全一致。真实坑点记录(避免以后重踩)：convertf **没有**
+     `inputformat:`这个参数(不存在，写了会被静默忽略)，它是**靠文件名
+     后缀自动识别格式**——PACKEDPED格式要求snp文件以`.pedsnp`/`.map`/
+     `.bim`结尾、indiv文件以`.pedind`/`.ped`结尾(见convertf自带README)。
+     我们的原始文件是`NB_final_snp.bim.orig`/`NB_final_snp.fam`，后缀不
+     符合，convertf识别不出PLINK格式，退回成EIGENSTRAT原生`.snp`格式的
+     解析器去读(列顺序是ID在前、chrom在后，跟PLINK bim的chrom在前顺序
+     相反)，导致把每个SNP的数字ID误当成染色体号，最终段错误。
+     修复：脚本会自动建软链接`NB_final_snp.rawchrom.bim`→`.bim.orig`、
+     `NB_final_snp.rawchrom.pedind`→`.fam`(不复制大文件)，par文件指向
+     这两个软链接名。`.ind`输出里群体标签是`???`是预期行为(`.fam`第6列
+     本来就没有群体信息)，不是这步转丢的，对应第3条待办。
    - 转换后自动跑一次 `check_ref.py`，核对convertf本身没有把A1/A2顺序转错
    - `par.MERGE`：mergeit 合并 29M_3k(转换后) 与 6.7M_720，剔除
      strand-ambiguous(A/T、C/G)位点，取共享位点，产出写到
-     `db/merged_29M3k_6M7_720/merged.{geno,snp,ind}`
-   - ⚠️`par.MERGE`里的参数名(`geno1/snp1/ind1`、`genooutfilename`等)是按
-     EIGENSOFT mergeit的标准约定写的，没有在服务器上实际跑过验证——如果
-     报"unrecognized parameter"一类的错，把报错贴回来，或者对照你服务器
-     上EIGENSOFT安装目录里mergeit的README核对一下参数名
+     `db/merged_29M3k_6M7_720/merged.{geno,snp,ind}`。
+     **⏳尚未在服务器验证**——`par.MERGE`里的参数名(`geno1/snp1/ind1`、
+     `genooutfilename`等)是按EIGENSOFT mergeit的标准约定写的，鉴于
+     convertf那步"标准约定"就踩过一次坑(文件后缀识别)，这步大概率也会
+     报错，报错的话把完整输出贴回来，跟convertf那次一样查server上
+     mergeit的README/源码定位，不要凭README字面直接猜下一次修复
    - 需要`convertf`/`mergeit`在PATH里、`python3`能`import pysam`
      (`check_ref.py`用到)
 3. **旱稻/水稻(或至少 indica/aus/japonica/aromatic 亚群)标签来源仍未解决**——
