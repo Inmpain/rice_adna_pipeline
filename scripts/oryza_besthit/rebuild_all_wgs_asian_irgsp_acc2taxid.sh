@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
-# 重建 all_wgs_asian_irgsp.acc2taxid（2026-08-08第二次修正：确认
-# asian_rice_panel.acc2taxid 里 4529/4530 是整份文件系统性反标，不是只有
-# np7 等12个基因组——凡是标4529(rufipogon)的应为4530(sativa)，凡是标4530
-# 的应为4529，全文件做一次二元互换即可，不需要按基因组名字分别判断）。
+# 重建 all_wgs_asian_irgsp.acc2taxid（2026-08-08第三次修正：
+# 1) 确认 asian_rice_panel.acc2taxid 里 4529/4530 是整份文件系统性反标，
+#    不是只有np7等12个基因组——凡是标4529(rufipogon)的应为4530(sativa)，
+#    凡是标4530的应为4529，全文件做一次二元互换即可，不需要按基因组名字
+#    分别判断。
+# 2) 服务器dry-run实测发现 irgsp.acc2taxid 有一行表头
+#    (accession/accession.version/taxid的字面表头行)，12行真实数据全部
+#    正确标成4530(sativa)，taxid方向本身没问题，但表头行如果被原样cat
+#    进最终的1100万行合并文件，第3列会是字面字符串"taxid"而不是数字，
+#    besthit脚本按taxid解析这一列时会出问题——merge阶段现在会过滤掉任何
+#    第3列不是纯数字的行（对三个源文件都生效，不只是irgsp）。
 #
 # 三个源文件：
 #   1. WGS真核库taxid（独立大文件，406M，跟panel目录不在一起）：
@@ -87,6 +94,21 @@ echo "   irgsp.acc2taxid 也有同样的反标问题，需要另外处理——�
 echo "   不会自动修正它，请把上面的输出贴回来确认后再决定"
 
 echo ""
+echo "== Step 2b: 检查三个源文件里第3列不是纯数字的行(比如表头行) =="
+echo "这些行如果原样并入合并文件，taxid列会变成非数字字符串，besthit脚本"
+echo "解析taxid时会出问题——merge阶段(--apply)会自动过滤掉这些行，不会写入"
+echo "最终的 all_wgs_asian_irgsp.acc2taxid"
+for label_file in "wgs_eukaryota.acc2taxid:$WGS" "asian_rice_panel.acc2taxid(修正后):$FIXED_PANEL" "irgsp.acc2taxid:$IRGSP_ACC2TAXID"; do
+  label="${label_file%%:*}"
+  f="${label_file#*:}"
+  bad_count=$(awk -F'\t' '$3 !~ /^[0-9]+$/' "$f" | wc -l | tr -d ' ')
+  echo "-- ${label} 非数字taxid行数 = ${bad_count} --"
+  if [[ "$bad_count" -gt 0 ]]; then
+    awk -F'\t' '$3 !~ /^[0-9]+$/' "$f" | head -5
+  fi
+done
+
+echo ""
 echo "== Step 3: 三源合并统计(dry-run先看行数，不代表最终结果) =="
 echo "wgs_eukaryota.acc2taxid 行数: $(wc -l < "$WGS")"
 echo "asian_rice_panel.acc2taxid(修正后) 行数: $(wc -l < "$FIXED_PANEL")"
@@ -112,7 +134,8 @@ cp "$PANEL_ACC2TAXID" "$PANEL_ACC2TAXID.bak-$TS"
 mv "$FIXED_PANEL" "$PANEL_ACC2TAXID"
 
 REBUILT="$MERGED_ACC2TAXID.rebuilt"
-cat "$WGS" "$PANEL_ACC2TAXID" "$IRGSP_ACC2TAXID" > "$REBUILT"
+# 只保留第3列是纯数字的行(丢弃表头等格式不对的行，见Step 2b)
+awk -F'\t' '$3 ~ /^[0-9]+$/ {print}' "$WGS" "$PANEL_ACC2TAXID" "$IRGSP_ACC2TAXID" > "$REBUILT"
 mv "$REBUILT" "$MERGED_ACC2TAXID"
 
 echo "已完成。备份文件："
