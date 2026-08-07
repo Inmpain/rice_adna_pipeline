@@ -12,3 +12,4 @@ strandcheck: YES
 allowdups: NO
 hashcheck: NO
 docheck: YES
+numchrom: 12
