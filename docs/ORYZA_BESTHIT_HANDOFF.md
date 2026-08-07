@@ -1,8 +1,10 @@
 # Oryza competitive mapping / best-hit 接手说明
 
-更新时间：2026-08-05（第二次更新：acc2taxid Oryza覆盖度诊断结果出来后，
-证伪了最早"数据库野生稻缺失"的假设，改用"损伤窗口固定长度 vs 读长"这个
-新证据更充分的假说，相应重排了第7/8/9节的优先级）
+更新时间：2026-08-08（第三次更新：发现并修正了`asian_rice_panel.acc2taxid`
+里`np7`(IRGSP/Nipponbare)的taxid错标问题，详见新增的"⚠️0.5 taxid错标"节。
+第二次更新记录：acc2taxid Oryza覆盖度诊断结果出来后，证伪了最早"数据库
+野生稻缺失"的假设，改用"损伤窗口固定长度 vs 读长"这个新证据更充分的假说，
+相应重排了第7/8/9节的优先级）
 
 > 读这份文档前提：你没有服务器直接执行权限，所有服务器端命令的输出都需要
 > 人类协作者手动跑了贴回来。不要假设你能直接看到服务器文件系统。
@@ -27,6 +29,56 @@ smoke test里"差1个编辑距离惜败"的541条read，均值/中位数长度�
 （末端N个位置的C→T/G→A频率随距离衰减的图，mapDamage风格），衰减到背景水平
 大概在多少bp——如果实际损伤延伸远超5bp，说明`--damage-window`设得太窄，
 这是下一个人接手后第一件要确认的事（见7.5）。
+
+## 0.5 ⚠️新发现（2026-08-08）：`np7`(IRGSP/Nipponbare) 在 acc2taxid 里 taxid 标反了
+
+用户和GPT的独立讨论（完整过程见`docs/asian_rice_panel_reference_design_
+conversation.md`）里，用染色体长度+逐条染色体MD5比对，确认了
+`asian_rice_panel.fa`里的`np7.Chr1-12`与`irgsp.fa`的`chr01-12`**完全一致
+(IDENTICAL)**——即`np7` = Nipponbare/IRGSP-1.0 = *O. sativa*。但
+`asian_rice_panel.acc2taxid`里`np7.*`(含Chr1-12、ChrUn、ChrSy、ChrM、ChrC
+共16行)**全部被标成了4529(*O. rufipogon*，普通野生稻)**，应为4530
+(*O. sativa*)。
+
+**对已有分析的影响**：
+- **不影响besthit的KEEP/REJECT二元判定**——`--oryza-taxids`默认
+  `"4529 4530 4536"`，4529和4530都在白名单里，np7的reads无论被算成哪个
+  taxid，仍然会被判定为"目标Oryza"，不会被误判成非Oryza。
+- **但影响第6.1节的"各物种contig数"统计表**——那张表用来证伪"数据库野生稻
+  缺失"假说的关键论据是"*sativa*只有111条、*rufipogon*有717条，sativa反而
+  偏低"。np7的16行如果原本被错误计入了717这个rufipogon桶，说明**修正后
+  *sativa*的真实contig数会比111更低（约95条）、*rufipogon*会比717更低
+  （约701条）**——需要在服务器跑完修正脚本后重新统计这张表，确认"sativa
+  偏低"这个结论的方向和幅度有没有变化（方向大概率不变，因为16条的调整量
+  相对717/111的量级不大，但具体数字要更新）。
+
+**修正方案**：`scripts/oryza_besthit/fix_asian_rice_panel_taxid.sh`——
+本地已用合成数据测试过dry-run和--apply两种模式，逻辑是：
+1. 重新给`asian_rice_panel.acc2taxid`里12个基因组(np7/mh63/X24_kas/azu/arc/
+   liuxu → 4530；7个G25_ruf_W* → 4529)赋正确taxid
+2. 在`all_wgs_asian_irgsp.acc2taxid`里**补丁式替换**这12个基因组对应的行
+   （不是重新做三源合并——WGS+asian_rice_panel+IRGSP的原始合并脚本没有
+   留存，不知道怎么拼的，所以只精确替换我们确认有问题的这一块，不动其余
+   119个WGS shard和IRGSP各自的部分）
+
+⚠️**只有np7做过这种逐染色体MD5的独立验证**。其余11个基因组(mh63/X24_kas/
+azu/arc/liuxu/7个G25_ruf_W*)的物种归属是根据文件命名和来源判断的，沿用了
+讨论里的结论，**没有再逐一验证**——如果后续发现某个命名对不上，这个脚本
+和这份记录都需要跟着改。`X24_kas`尤其存疑（讨论里明确提到"如果确实是
+Kasalath"这个前提未经验证）。
+
+**待办**：
+```bash
+# 1. 先 dry-run，确认改动符合预期(不写文件)
+curl -fsSL -o fix_asian_rice_panel_taxid.sh \
+  https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/oryza-competitive-mapping/scripts/oryza_besthit/fix_asian_rice_panel_taxid.sh
+bash fix_asian_rice_panel_taxid.sh /home/scratch/yinmt202607/db/asian_rice_panel_index
+
+# 2. 确认无误后加 --apply 真正落盘(会自动备份原文件)
+bash fix_asian_rice_panel_taxid.sh /home/scratch/yinmt202607/db/asian_rice_panel_index --apply
+
+# 3. 重新统计第6.1节的物种contig数表，更新这份文档
+```
 
 ## 1. 项目背景
 
@@ -106,11 +158,16 @@ besthit 输出根目录：`/home/scratch/yinmt202607/gene/results/oryza_competit
 WGS 真核数据库：`/home/database/ref20250728/cph_euk/wgs_eukaryota.{1..129}.fas.gz`（129个shard）
 
 亚洲水稻 panel：`/home/scratch/yinmt202607/db/asian_rice_panel_index/asian_rice_panel.fa`
+（12个基因组：np7/mh63/X24_kas/azu/arc/liuxu 6个O. sativa代表品种 + 7个
+G25_ruf_W*的O. rufipogon野生稻，选取理由/覆盖的遗传谱系/质量评估见
+`docs/asian_rice_panel_reference_design_conversation.md`）
 
 IRGSP：`/home/scratch/yinmt202607/db/asian_rice_panel_index/irgsp_bt2idx`
 
 合并 accession→taxid：`/home/scratch/yinmt202607/db/asian_rice_panel_index/all_wgs_asian_irgsp.acc2taxid`
-（标准 NCBI 三列格式：accession / accession.version / taxid）
+（标准 NCBI 三列格式：accession / accession.version / taxid。**⚠️2026-08-08
+发现np7标签错误，见0.5节，还有独立的`asian_rice_panel.acc2taxid`和
+`irgsp.acc2taxid`两个源文件，只检查过前者**）
 
 NCBI taxonomy dump：`/home/database/ref20250728/taxonomy_CPH/ncbi/20250530/{nodes.dmp,names.dmp}`
 
@@ -166,6 +223,7 @@ Oryza 最优 hit 必须与非 Oryza 最优 hit 打平或更好，才 KEEP**。
 脚本落地：
 - `scripts/oryza_besthit/oryza_besthit_damage_filter.py` —— 主统计脚本（约550行）
 - `scripts/oryza_besthit/submit_oryza_besthit.sh` —— SLURM 提交脚本（约430行）
+- `scripts/oryza_besthit/fix_asian_rice_panel_taxid.sh` —— taxid错标修正脚本（见0.5节，2026-08-08新增）
 
 ### 5.2 核心算法
 
@@ -288,6 +346,7 @@ alignment 这5种情况），在隔离 venv 里装 pysam 实测跑通全流程�
 | 1 | `module load python/ 2>/dev/null` 只重定向了 stderr，但这台集群的 `module` 命令把错误信息写到了 stdout | `check`/`smoke` 输出里混入 `ERROR: Unable to locate a modulefile for 'python/'`（无害噪音，不影响功能） | 改成 `>/dev/null 2>&1` | `a1738fc` |
 | 2 | **最关键的一个**：`sbatch` 会把提交的脚本复制到每个作业专属的 spool 目录（`/var/spool/slurm/d/job<id>/`）并执行那份拷贝，不是原始文件；脚本内部用 `readlink -f "${BASH_SOURCE[0]}"` 推导自己所在目录来找同目录下的 `oryza_besthit_damage_filter.py`，这个推导在 SLURM job 里跑的时候会指向错误的 spool 目录 | smoke test 实际报错：`python3: can't open file '/var/spool/slurm/d/job1807625/oryza_besthit_damage_filter.py': No such file or directory` | 提交时把已经在提交端正确解析好的 `PY_SCRIPT` 绝对路径通过 `--export="ALL,PY_SCRIPT=${PY_SCRIPT}"` 显式传进 job 环境，job 内不再重新推导 | `a1738fc` |
 | 3 | 无 `submit all` / `local` 模式，用户批量跑/本地调试不方便 | — | 新增 `submit all`（自动发现已完成mapping的样本）和 `local`/`local all`（前台不走 sbatch，复用同一套 worker + `.finished` 跳过逻辑） | `83a0f6f` |
+| 4 | `asian_rice_panel.acc2taxid` 里 `np7`(IRGSP/Nipponbare) 被错标成 4529(rufipogon)，应为4530(sativa) | 用户用染色体MD5比对发现 | 见0.5节，`fix_asian_rice_panel_taxid.sh`，**待服务器实跑验证** | 待补 |
 
 **重要经验**：bug #2 这一类"脚本自我定位"的坑，本地测试完全测不出来（本机
 没有 sbatch，只能测 `run`/`local` 这两个不依赖 `sbatch` 拷贝脚本的路径），
@@ -353,6 +412,14 @@ best_oryza_adjusted_NM`，负值=Oryza更差）：
 
 ### 6.1 acc2taxid 覆盖度诊断结果（第7.1节问题，已有答案）
 
+⚠️**2026-08-08更新：下表统计于`np7`taxid错标(见0.5节)被修正之前，需要在
+服务器跑完`fix_asian_rice_panel_taxid.sh --apply`后重新统计**。np7有16行
+（Chr1-12+ChrUn+ChrSy+ChrM+ChrC）原本被错误计入了下面的4529(rufipogon)桶，
+修正后*O. sativa*(4530)的真实数字会比111更低（约95）、*O. rufipogon*
+(4529)会比717更低（约701）。**"sativa覆盖度偏低"这个结论的方向大概率不变
+（16条的调整量相对717/111的量级不大），但下面的具体数字已知有误，重新统计
+之前不要直接引用**。
+
 Oryza 属18个已知种在 `all_wgs_asian_irgsp.acc2taxid` 里的 contig 数（用
 `nodes.dmp` 里 parent==4527 找到全部种级taxid，逐个数 acc2taxid 里精确匹配
 的行数；*sativa* 另外加了亚种级taxid 39946/39947/1050722/1080340/2998809
@@ -360,8 +427,8 @@ Oryza 属18个已知种在 `all_wgs_asian_irgsp.acc2taxid` 里的 contig 数（�
 
 ```
 4528  Oryza longistaminata    905
-4529  Oryza rufipogon         717   <- 野生稻，覆盖很好
-4530  Oryza sativa             96 (+15 japonica = 111)
+4529  Oryza rufipogon         717   <- 野生稻，覆盖很好 (⚠️待修正后重新统计)
+4530  Oryza sativa             96 (+15 japonica = 111)  (⚠️待修正后重新统计)
 4532  Oryza australiensis      60
 4533  Oryza brachyantha        60
 4534  Oryza latifolia          78
@@ -379,7 +446,8 @@ Oryza 属18个已知种在 `all_wgs_asian_irgsp.acc2taxid` 里的 contig 数（�
 127571 Oryza malampuzhaensis  198
 ```
 
-**结论：这个假说被证伪**。*sativa* (111条) 不但不缺，反而是覆盖度偏低的
+**结论：这个假说被证伪**（⚠️此结论基于修正前的数字，方向大概率仍成立，
+待重新统计后确认）。*sativa* (111条) 不但不缺，反而是覆盖度偏低的
 那一档——*rufipogon*(717)、*longistaminata*(905)、*coarctata*(450) 等好几个
 种覆盖度都远高于sativa。"数据库里野生稻/近缘种缺失"不是"差1惜败"这个模式
 的解释，第8.1节原本"优先扩库"的建议已经不成立，改成"优先查损伤窗口"
@@ -422,7 +490,8 @@ angkor样本还是这个项目别的样本）？如果没有，可以从BAM直�
 ### 7.1 ~~acc2taxid 里 Oryza 属各物种的实际覆盖度~~ 已回答，见6.1
 
 结论：Oryza属18个种普遍有几十到几百条contig，*sativa*(111条)不缺，反而是
-偏低的一档。这个问题已解决，不再是待办。
+偏低的一档。这个问题已解决，不再是待办。⚠️2026-08-08：数字待修正np7标签后
+重新核实，见0.5/6.1节，结论方向预期不变。
 
 ### 7.2 `db/3k/wild/` 140+ 野生稻组装的物种身份
 
@@ -444,7 +513,9 @@ done
 VARIETY_INDEX/NAME/IRIS_ID）交叉查询才能确认。**注意**：3K Rice Genome
 Project官方主体是3024份**栽培稻**（indica/aus/aromatic/japonica等亚群），
 不是野生稻——这批 `wild/` 目录既然单独命名和别的3K数据分开放，大概率是
-额外补充的野生近缘种outgroup，但没有manifest佐证之前不要假设。
+额外补充的野生近缘种outgroup，但没有manifest佐证之前不要假设。**另见
+`docs/RESEARCH_ROADMAP.md`第2节C——这140+个组装是否等同于Guo et al. 2025
+pangenome论文提供的145个组装，是main分支也在追的同一个开放问题。**
 
 **优先级下调**：这条本来是基于"数据库野生稻缺失"假说排的第一优先级，
 现在7.1已经证明acc2taxid里Oryza属覆盖面本身就很宽，这条不再紧急，可以
@@ -475,7 +546,7 @@ Smoke test 日志里如果有 `[warn] N alignments had no usable SEQ/MD` 这一�
 是这个脚本的内存大头，量级可能到GB级别，具体数字取决于这两个文件的真实大小，
 需要 `seff` 或 `wc -l` 实测。
 
-### 7.5（新增，当前最优先）`--damage-window=5` 是否偏窄——需要实测损伤衰减曲线
+### 7.5（当前最优先）`--damage-window=5` 是否偏窄——需要实测损伤衰减曲线
 
 见0/6.2的推理：差1惜败的read系统性比KEEP的read长，机制上最可能的解释是
 固定5bp窗口对长读长不利。这个假说要成立，前提是这批样本的真实损伤信号确实
@@ -496,6 +567,13 @@ Smoke test 日志里如果有 `[warn] N alignments had no usable SEQ/MD` 这一�
 重新跑 smoke test 看"差1惜败"的541条里有多少会因此翻盘成KEEP，再判断这
 是不是6.2这个模式的完整解释，还是只能解释一部分。
 
+**2026-08-07进展**：4个样本(LV6000619499/619917/620016/620032)已跑完全量
+besthit，留存率(kept/input)分别为5.00%/5.00%/4.37%/4.92%，四个样本高度
+一致，没有出现某个样本被5bp窗口明显"冤枉"的迹象——这是"5bp目前没出大问题"
+的数据支撑，用户据此判断"5bp暂时可用"，倾向于不再深挖这个问题，转向
+确认参考基因组体系（0.5/7.2节）和ecotype-pca-panel分支的标签来源问题。
+详见`docs/RESEARCH_ROADMAP.md`。
+
 ## 8. 后续三条工作线（讨论过，还没定最终方案）
 
 这三条是用户提出的下一步方向，讨论了可行性和优先级，但都**还没有开始实际
@@ -510,7 +588,10 @@ Smoke test 日志里如果有 `[warn] N alignments had no usable SEQ/MD` 这一�
 - `db/16/`（资源组A，NCBI datasets 16基因组+Liftoff注释）和 `db/3k/`（资源组B，
   3K Rice Genome Project数据）是**两个不同来源**，关系没有理清。
 - `asn720data/`（720份现代/近现代品种PLINK面板）跟16个angkor古代样本的关系
-  "尚未最终确认"（是否包含、是否capture panel来源）。
+  "尚未最终确认"（是否包含、是否capture panel来源）——⚠️2026-08-07更新：
+  `ecotype-pca-panel`分支发现`asn720data/asn720.pop.fam`的FID列是`OrA-OrF`
+  群体标签的关键来源，已不再是"可以忽略"的旧数据，详见
+  `docs/RESEARCH_ROADMAP.md`。
 - `db/3k/wild/` 这140+个野生稻/近缘种组装身份不明（见7.2，优先级已下调）。
 - 已经有一个独立的 `results/07.wild_rice_alignment/`（minimap2 asm10 预设，
   野生稻组装比对到IRGSP，用于paftools.js call变异，标注"进行中"）——这是
@@ -518,9 +599,8 @@ Smoke test 日志里如果有 `[warn] N alignments had no usable SEQ/MD` 这一�
   混淆，但如果这些wild genome的minimap2比对已经产出了变异，可能可以复用来
   确认这些野生稻组装的物种/谱系身份。
 
-**现在真正优先级最高的是7.5（损伤窗口校准）**，不是这条。这条可以往后放，
-等7.5的诊断做完、确认"差1惜败"主要是损伤窗口问题而不是别的原因之后，再
-决定要不要额外花精力理清参考基因组体系。
+**现在真正优先级最高的是0.5节的taxid修正**，其次是7.5（损伤窗口校准，
+已有初步数据支撑"5bp可用"）。这条可以往后放。
 
 ### 8.2 时间序列选择信号扫描（selection scan）
 
@@ -580,24 +660,27 @@ DTH8/Ghd8经典大片段缺失（3024份现代品种里5.4%携带这个缺失，
    到时候再具体设计怎么从探针捕获的reads里判定SV有无（比如split-read/
    discordant-pair证据，还是简单的深度骤降，取决于具体是哪种SV）。
 
-## 9. 给下一个接手者的具体待办（按优先级，本次更新后已重排）
+## 9. 给下一个接手者的具体待办（按优先级，2026-08-08更新后已重排）
 
-1. 【诊断，当前最优先】第7.5节：确认这批样本有没有做过损伤衰减曲线分析
-   （mapDamage风格），衰减到背景水平大概多少bp。如果没有，从BAM快速估算
-   一版粗略的。**这是解释"差1惜败"541条read的核心假说，比其余诊断都优先**。
-2. 如果7.5证实5bp窗口偏窄，评估调大 `--damage-window` 后重新跑 smoke test，
-   看541条里有多少翻盘成KEEP，判断这是完整解释还是部分解释。
-3. 【诊断，优先级降低，非阻塞】7.2（`db/3k/wild/`物种身份）、7.3（taxid
-   rank校验）、7.4（MD tag覆盖率完整log、`seff`内存实测）——都可以做，但
-   不再挡着best-hit往前走。
+1. 【当前最优先】0.5节：在服务器跑`fix_asian_rice_panel_taxid.sh`
+   （先dry-run再--apply），修正np7的taxid错标，然后重新统计第6.1节的
+   物种contig数表，更新这份文档。
+2. 【次优先】7.5节：损伤窗口诊断——已有4个样本的初步数据支撑"5bp可用"，
+   如果用户认为证据已经够用，可以不再深挖，直接按当前参数继续跑剩余样本；
+   如果想更严谨验证，见7.5节的诊断脚本思路。
+3. 【诊断，优先级降低，非阻塞】7.2（`db/3k/wild/`物种身份，与main分支
+   `RESEARCH_ROADMAP.md`的P0第2条是同一个问题）、7.3（taxid rank校验）、
+   7.4（MD tag覆盖率完整log、`seff`内存实测）——都可以做，但不再挡着
+   best-hit往前走。
 4. 只有在7.5的损伤窗口问题排查/调整完之后，才回头评估要不要给
    `oryza_besthit_damage_filter.py` 加一个margin参数（当前硬编码`<=`，没有
    margin概念）——在没排除损伤窗口这个更根本的原因之前，先调margin是在
    错的层面上打补丁。
 5. 对剩余13个还在mapping队列里的样本，随mapping进度用 `submit_oryza_besthit.sh
    submit all` 陆续跑besthit（这条不依赖1-4，可以随时做）。
-6. 8.1（参考基因组体系整理）优先级已下调，不再是阻塞项，有余力再做。
+6. 8.1（参考基因组体系整理）——`asn720data`标签发现后优先级有所回升，
+   但仍不是阻塞项。
 7. 8.2（selection scan）和8.3（57基因SV判生态型）都还没真正开始。8.3的
    覆盖度QC是个独立、低成本、能快速出结论的子任务，可以和上面几条并行推进；
    8.2依赖更完整的genotype pipeline，且同样会受损伤/参考质量问题影响，
-   优先级排在7.5之后。
+   优先级排在0.5/7.5之后。
