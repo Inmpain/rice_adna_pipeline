@@ -10,11 +10,18 @@
 ## 0. 现状一句话总结
 
 两个参考 panel 已经到位(见第1节实际路径)。坐标系核对已完成(见3.1)：染色体
-命名一致、REF/ALT方向虽相反但mergeit可自动处理；`asn720data`已决定弃用
-(密度太低)。convertf 这步(29M_3k PLINK→EIGENSTRAT)已在服务器上验证跑通
-(2026-08-07，见3.2节step 2)：29,635,224个SNP、3024个样本转换前后完全一致，
-无丢失。当前最优先的事是接着跑 `run_convert_merge.sh` 剩下的 mergeit 那步
-(29M_3k转换结果 与 6.7M_720 求交集)，再动手写pseudo-haplotype调用脚本。
+命名一致、REF/ALT方向虽相反但mergeit可自动处理。convertf 这步(29M_3k
+PLINK→EIGENSTRAT)已在服务器上验证跑通(2026-08-07，见3.2节step 2)：
+29,635,224个SNP、3024个样本转换前后完全一致，无丢失。**⚠️2026-08-07重大
+更正**：`asn720data`此前被判定"密度太低、直接弃用、不用查跟6.7M_720的关系"
+——这个判断错了。`asn720data/asn720.pop.fam`的**FID列(第一列)是真实的群体
+标签(`OrA`/`OrB`/`OrC`/`OrD`/`OrE`/`OrF`...)**，键在跟`asn720.6m.ind`同一套
+`ERR0685xx`风格样本ID上——而`asn720.6m.ind`目前把这批样本的群体标签记成
+笼统的`control`。这很可能就是第3.2节第3条一直找不到的旱稻/水稻标签来源，
+比指望SNP-Seek或翻论文补充材料直接得多。详见1.2/3.2。当前最优先的事分两条
+并行：①接着跑 `run_convert_merge.sh` 剩下的 mergeit 那步；②核实
+`asn720data`标签能覆盖`asn720.6m.ind`里多少样本、读`db/wild_rice_pangenome_
+README.txt`(新发现，内容还没看)搞清楚`OrA-OrF`具体定义。
 
 ## 1. 数据库
 
@@ -46,6 +53,7 @@
 - 路径：`/home/scratch/yinmt202607/db/6.7M_720/`
   ```
   asn720.6m.geno
+  asn720.6m.geno.gz    (压缩版，跟未压缩版并存)
   asn720.6m.ind
   asn720.6m.snp
   ```
@@ -56,29 +64,42 @@
 - 来源/参考坐标系：**尚未确认是否也是 called vs Nipponbare MSU7/IRGSP1.0**——
   这是第3节里最优先要查的问题，不确认这一点，后面所有"求交集"的结果都
   可能是静默错误(代码能跑，位点对不上导致交集集合偏小或为空，但不会报错)。
-- **`asn720data`(94,974个SNP)已决定弃用，不再需要确认两者关系**：
-  `file_path.md`记录的 `asn720data/asn720.pop.{bed,bim,fam}`(720份现代/
-  近现代品种PLINK面板，94,974个SNP位点)密度太低，撑不起本分析"panel密度
-  换古代reads覆盖概率"的诉求，直接不用，只用`asn720.6m.*`这份6.7M位点的
-  数据。两者是否为同一批720份材料这个问题不再重要，不用再花时间核实。
+- **⚠️`asn720data`不能弃用——它的`.fam`文件是群体标签的关键来源
+  (2026-08-07更正，推翻此前"已决定弃用"的判断)**：
+  `asn720data/asn720.pop.{bed,bim,fam}`(720份、94,974个SNP位点)本身的
+  **基因型数据**密度确实太低，不适合拿来做PCA底层数据，这一点原判断没错；
+  但`asn720.pop.fam`的**FID列(第一列)记录着`OrA`/`OrB`/`OrC`/`OrD`/`OrE`/
+  `OrF`这样的群体标签**，例如：
+  ```
+  OrD    ERR068594    0    0    0    1
+  OrD    ERR068597    0    0    0    1
+  OrA    ERR068598    0    0    0    1
+  OrF    ERR068600    0    0    0    1
+  OrC    ERR068604    0    0    0    1
+  ```
+  这批`ERR0685xx`风格的样本ID，跟`asn720.6m.ind`里那批被记成笼统`control`
+  标签的样本**是同一套ID体系**(见下面"样本ID观察")。也就是说：即使基因型
+  数据只用`asn720.6m.*`(6.7M位点，密度更高)，**群体标签应该从
+  `asn720data/asn720.pop.fam`按样本ID(IID)匹配过去**，而不是用
+  `asn720.6m.ind`自己那个占位符式的`control`。**这批`OrA-OrF`标签，很可能
+  就是第3.2节第3条一直在找的旱稻/水稻(或至少野生稻谱系)标签来源**——
+  且与本工作流之前看到的一张smartpca投影图(图例里正好有`OrA`至`OrF`分类，
+  以及`ADM/ARO/AUS/IND/RAY/TEJ/TRJ`等3K RGP标准亚群编号)用的是同一套
+  `OrA-OrF`编号，强烈暗示两者同源，值得优先核实覆盖率而不是继续等
+  SNP-Seek或啃论文补充材料。
 - **样本ID观察**：`asn720.6m.ind`里样本ID是两种风格混合——`ERR068594`一类
-  (ENA测序run编号，群体标签`control`)和`B011_merged`一类(跟3K RG自己的
-  品种编号风格接近，见besthit分支`ORYZA_BESTHIT_HANDOFF.md`第6节SV数据里
-  出现过的`B071`类样本名)。说明这720份很可能是从不同批次/不同命名体系
-  拼合而成，不是单一来源；暂不影响使用，仅作记录。
-- **⚠️疑似跨panel样本重复(2026-08-07发现，尚未核实，先记录不处理)**：
-  用户肉眼比对`asn720.6m.ind`和`NB_final_snp.ind`时发现`CX382`这个ID在
-  两边都出现——720号panel里是`CX382_merged`(群体标签`control`)，3K panel
-  转换后的`NB_final_snp.ind`里是裸的`CX382`(群体标签`???`，符合3.2节
-  第2条记录的"`.fam`第6列本来就没有群体信息"这个已知情况)。**不能仅凭
-  名字判断是同一份材料**——`_merged`后缀可能只是720号panel自己的命名习惯
-  (标记"合并过的文库")，不代表和3K panel里的`CX382`是同一次测序/同一个
-  个体；也可能确实是同一份材料在两个数据来源里各存了一份。核实方法：
-  拿掉`_merged`后缀后，把两边`.ind`文件的完整样本ID列表做交集，不要只看
-  `CX382`这一个，系统性查一遍有多少个疑似重复；如果确认是同一个体，
-  第2节①步"29M_3k ∩ 6.7M_720"求交集时需要决定去重策略(留哪份、按什么
-  优先级)，否则可能把同一份材料的信号在PCA里重复计入。**当前不阻塞
-  mergeit那步先跑通**，但正式产出前必须查清楚。
+  (ENA测序run编号，群体标签目前记成笼统的`control`，但真实标签应该从
+  `asn720data/asn720.pop.fam`按ID匹配，见上一条)和`B011_merged`一类(跟
+  3K RG自己的品种编号风格接近，见besthit分支`ORYZA_BESTHIT_HANDOFF.md`
+  第6节SV数据里出现过的`B071`类样本名)。说明这720份很可能是从不同批次/
+  不同命名体系拼合而成，不是单一来源；`asn720data/asn720.pop.fam`目前只
+  见到`ERR`风格的条目，`B0xx_merged`风格的样本有没有对应标签、标签在哪
+  还未核实。
+- **新发现，内容未读**：`db/wild_rice_pangenome_README.txt`——在`db/`
+  顶层目录，跟`db/16/`、`db/3k/`、`db/29M_3k/`、`db/6.7M_720/`、
+  `db/asn720data/`平级，此前从未被提及过，很可能是解释`OrA-OrF`具体定义、
+  或`db/3k/wild/`140+野生稻组装身份(见besthit分支`ORYZA_BESTHIT_HANDOFF.md`
+  第7.2节的老问题)的权威说明文件。已请用户`cat`出内容。
 
 ### 1.3 两个panel的关系
 
@@ -121,7 +142,8 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
         │
         ▼
 ⑤ 看古代样本在PC空间里落在哪个/哪些现代亚群附近，结合亚群的旱稻/水稻标签
-   (标签来源见第3节，目前还没有)判断生态型归属
+   (标签来源见第3节——新找到候选来源`asn720data/asn720.pop.fam`)判断
+   生态型归属
 ```
 
 ## 3. 待确认/待办(按优先级)
@@ -150,8 +172,17 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
 
 ### 3.2 待办(按优先级)
 
-1. ~~确认 `6.7M_720` 和 `asn720data` 的关系~~——**已决定弃用`asn720data`
-   (94,974个SNP密度太低)，只用`asn720.6m.*`，这条不再需要，见1.2节。
+1. **重新打开：确认 `6.7M_720` 和 `asn720data` 的关系(2026-08-07重新打开，
+   之前误判为"已决定弃用、不用查")**——现在明确知道`asn720data/
+   asn720.pop.fam`的FID列是群体标签(`OrA-OrF`等)，需要：
+   a) 按IID(样本ID)把`asn720.pop.fam`的标签匹配到`asn720.6m.ind`上，
+      算出能覆盖多少比例的720号样本(尤其`B0xx_merged`风格的样本有没有
+      对应条目，目前只在`asn720.pop.fam`里见过`ERR`风格的ID)
+   b) 读`db/wild_rice_pangenome_README.txt`(新发现，见1.2节)，确认
+      `OrA-OrF`的精确定义，以及是否与`A pangenome reference of wild
+      and cultivated rice`(Nature 2025)论文里的`Or-Ia/Or-Ib/Or-II/
+      Or-IIIa/Or-IIIb`分组是**同一套体系还是两套不同的编号方案**——
+      字母+罗马数字 vs 单字母，命名习惯不同，不能想当然认为是一回事
 2. **格式统一 + 求交集**——par文件和执行脚本已写好并提交到
    `scripts/ecotype_pca/`，服务器上直接跑：
    ```bash
@@ -172,7 +203,7 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
      修复：脚本会自动建软链接`NB_final_snp.rawchrom.bim`→`.bim.orig`、
      `NB_final_snp.rawchrom.pedind`→`.fam`(不复制大文件)，par文件指向
      这两个软链接名。`.ind`输出里群体标签是`???`是预期行为(`.fam`第6列
-     本来就没有群体信息)，不是这步转丢的，对应第3条待办。
+     本来就没有群体信息)，不是这步转丢的。
    - 转换后自动跑一次 `check_ref.py`，核对convertf本身没有把A1/A2顺序转错
    - `par.MERGE`：mergeit 合并 29M_3k(转换后) 与 6.7M_720，剔除
      strand-ambiguous(A/T、C/G)位点，取共享位点，产出写到
@@ -184,23 +215,23 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
      mergeit的README/源码定位，不要凭README字面直接猜下一次修复
    - 需要`convertf`/`mergeit`在PATH里、`python3`能`import pysam`
      (`check_ref.py`用到)
-3. **旱稻/水稻(或至少 indica/aus/japonica/aromatic 亚群)标签来源仍未解决**——
-   这是 `docs/3krgp_integration_and_simulation_prep.md` 待办第4条就已经标注
-   的老问题("passport分类表下载(SNP-Seek)—— PCA路径最大卡点")，SNP-Seek
-   官网前端目前下线，需要找替代来源(比如 GigaDB 上的 3K RGP 论文补充材料，
-   或 *A pangenome reference of wild and cultivated rice* (Nature 2025,
-   PMID 40240605) 里对129份*O. rufipogon*的Or-Ia/Or-Ib/Or-II/Or-IIIa/
-   Or-IIIb谱系分组——该文摘要提到"所有驯化位点都来自japonica祖先谱系
-   Or-IIIa"，如果这套谱系分组能拿到精确定义，可能是比SNP-Seek更新、更
-   直接可用的替代标签来源，待查该文Methods/补充材料确认每个分组的具体
-   定义)。没有这份标签，PCA做出来也没法解释哪个方向是旱稻哪个是水稻。
-   这一步不阻塞1-2，可以并行找。
+3. **旱稻/水稻(或至少 indica/aus/japonica/aromatic 亚群)标签来源——
+   找到强力候选(2026-08-07)，待核实覆盖率**：不再单纯指望SNP-Seek(官网
+   前端下线)或翻论文补充材料——`asn720data/asn720.pop.fam`的FID列
+   (`OrA-OrF`)很可能就是答案，见1.2节和3.2第1条。备用/交叉验证来源仍然
+   保留：*A pangenome reference of wild and cultivated rice*(Nature 2025，
+   PMID 40240605)里129份*O. rufipogon*的`Or-Ia/Or-Ib/Or-II/Or-IIIa/
+   Or-IIIb`谱系分组(该文摘要提到"所有驯化位点都来自japonica祖先谱系
+   Or-IIIa")，以及`db/wild_rice_pangenome_README.txt`(新发现，未读)。
+   三个来源不确定是否互相独立还是同源，第1条查清楚之后再确定最终用哪个/
+   要不要交叉验证。这一步不阻塞2，可以并行。
 4. pseudo-haplotype 调用脚本、smartpca 具体参数(尤其是 `-lsqproject` 相关
-   配置)还没写，等1-2项确认完再动手，避免在错误坐标系/面板上重复返工。
+   配置)还没写，等1-3项确认完再动手，避免在错误坐标系/面板/标签上重复
+   返工。
 5. **核查`asn720.6m.ind`与`NB_final_snp.ind`之间的样本ID重叠**(见1.2节
    `CX382`案例)——去掉`_merged`后缀后系统性比对两份样本列表，确认重叠
    规模；如果存在系统性重复，第2节①步求交集前需要先定去重策略。当前
-   优先级低于2/3，不阻塞mergeit先跑通，但正式产出结果前必须处理。
+   优先级低于1/2/3，不阻塞mergeit先跑通，但正式产出结果前必须处理。
 
 ## 4. 与 besthit 分支的关系
 
