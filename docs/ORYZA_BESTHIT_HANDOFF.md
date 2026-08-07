@@ -1,11 +1,14 @@
 
 # Oryza competitive mapping / best-hit 接手说明
 
-更新时间：2026-08-08（第五次更新：用户截图确认`asian_rice_panel.acc2taxid`
-是**整份文件**4529/4530系统性反标——不是"np7等12个基因组各自标错"，而是
-"凡标4529的都应为4530、凡标4530的都应为4529"，全文件二元互换。修正脚本
-已从"按基因组名字分别赋值"改成"整列做4529↔4530互换"，逻辑更简单也更可靠
-（不依赖基因组身份判断）。第四次更新：找到了`all_wgs_asian_irgsp.acc2taxid`
+更新时间：2026-08-08（**第六次更新（当晚收工前）：服务器真实dry-run已跑
+过，结果符合预期方向，但脚本又发现并修复了一个新问题（irgsp.acc2taxid有
+表头行，会污染合并文件），--apply还没跑，是明天开工第一件事，详见0.6
+节**。第五次更新：用户截图确认`asian_rice_panel.acc2taxid`是**整份文件**
+4529/4530系统性反标——不是"np7等12个基因组各自标错"，而是"凡标4529的都
+应为4530、凡标4530的都应为4529"，全文件二元互换。修正脚本已从"按基因组
+名字分别赋值"改成"整列做4529↔4530互换"，逻辑更简单也更可靠（不依赖基因组
+身份判断）。第四次更新：找到了`all_wgs_asian_irgsp.acc2taxid`
 真实的三源合并配方，把0.5节的修正方案从"补丁式替换"改成"完整重建"，脚本
 换成了`rebuild_all_wgs_asian_irgsp_acc2taxid.sh`，旧的`fix_asian_rice_panel_
 taxid.sh`已从仓库删除。第三次更新：发现并诊断了`asian_rice_panel.acc2taxid`
@@ -141,6 +144,79 @@ bash rebuild_all_wgs_asian_irgsp_acc2taxid.sh \
 
 # 3. 重新统计第6.1节的物种contig数表，更新这份文档
 ```
+
+## 0.6 ⚠️2026-08-08当晚：真实dry-run已跑，结果符合预期，但发现新问题——
+### `--apply`还没跑，是明天开工第一件事
+
+**服务器dry-run实测结果**（用户跑的是当时的版本，commit `8ba66b4`，还没有
+下面提到的表头过滤修复）：
+
+```
+== Step 1 ==
+修正前: 705行=4529, 84行=4530  (changed_lines=789，即整份文件都改了)
+修正后: 84行=4529, 705行=4530
+抽样: G25_ruf_W0169.Chr1  4530 -> 4529   (对，野生rufipogon本应4529，
+                                          之前被错标成4530，方向正确)
+
+== Step 2 ==
+irgsp.acc2taxid 前5行第一行是表头: accession/accession.version/taxid
+真实12行数据全部是 4530 (chr01-chr12)
+
+== Step 3 ==
+wgs_eukaryota.acc2taxid:              11,038,401 行
+asian_rice_panel.acc2taxid(修正后):          789 行
+irgsp.acc2taxid:                              13 行(12数据+1表头)
+现有all_wgs_asian_irgsp.acc2taxid:    11,039,202 行
+```
+
+**两个关键结论**：
+1. **互换方向确认完全正确**——不是靠合成数据推断，是服务器真实文件上
+   验证过的：789行里705行原本标4529、84行原本标4530，互换后709行变
+   84/705变705，抽样对照的`G25_ruf_W0169`(野生rufipogon)从错误的4530
+   变成正确的4529。
+2. **`irgsp.acc2taxid`本身没有taxid反标问题**——12行真实数据(chr01-12)
+   全部正确标成4530(sativa)，不需要修正taxid方向。**但**它有一行字面
+   表头(`accession	accession.version	taxid`)，如果被原样`cat`进
+   1100万行的合并文件，第3列会变成字符串`"taxid"`而不是数字，besthit
+   脚本按taxid解析这一列时会出问题。
+
+**已修复**（commit `2965348`，当晚新增的Step 2b + 过滤逻辑）：脚本现在
+会对三个源文件都检查"第3列是不是纯数字"，`--apply`阶段自动丢弃任何
+非数字taxid的行（不只是irgsp，wgs和panel文件如果也有类似问题也会被
+一起处理）。**这个修复只在本地用合成数据测试过（还原了"文件里有一行
+字面表头"这个场景），没有在服务器上重新跑过dry-run确认**。
+
+**明天开工的第一步，是重新下载这个修复后的脚本、重新跑一次dry-run确认
+Step 2b显示`irgsp.acc2taxid 非数字taxid行数 = 1`（这次应该被正确识别
+并即将被过滤），确认没有新问题后，再跑`--apply`**：
+
+```bash
+cd /home/scratch/yinmt202607/gene/scripts
+curl -fsSL -o rebuild_all_wgs_asian_irgsp_acc2taxid.sh \
+  https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/oryza-competitive-mapping/scripts/oryza_besthit/rebuild_all_wgs_asian_irgsp_acc2taxid.sh
+
+# 重新dry-run一次，确认Step 2b正确识别irgsp.acc2taxid的表头行
+bash rebuild_all_wgs_asian_irgsp_acc2taxid.sh \
+  --wgs /home/database/ref20250728/taxonomy_CPH/wgs_eukaryota.acc2taxid \
+  --panel-dir /home/scratch/yinmt202607/db/asian_rice_panel_index
+
+# 确认无误后--apply（会自动备份原文件，预期新的all_wgs_asian_irgsp.acc2taxid
+# 行数应该是 11,038,401 + 789 + 12 = 11,039,202（跟旧文件行数一样，因为
+# 只是替换了12个原有基因组自己内部的标签方向，加上去掉了irgsp那1行表头，
+# 净变化应该是"减1行"——如果看到的不是11,039,201，先别急着继续，回来核对）
+bash rebuild_all_wgs_asian_irgsp_acc2taxid.sh \
+  --wgs /home/database/ref20250728/taxonomy_CPH/wgs_eukaryota.acc2taxid \
+  --panel-dir /home/scratch/yinmt202607/db/asian_rice_panel_index \
+  --apply
+```
+
+**--apply之后要做的事**（还没做）：
+1. 重新统计第6.1节的物种contig数表，替换掉现在标着"⚠️待修正后重新统计"
+   的旧数字
+2. 重新评估"sativa覆盖度偏低"这个结论在真实数字下是否仍然成立（第0/6.1/
+   7.1节现在都还是基于旧的、已知有整体反标问题的数字，方向可能会变）
+3. 更新本文档第5.6节bug表格第4行的commit hash（目前写的是"待补"/旧commit，
+   最终版本是`2965348`）
 
 ## 1. 项目背景
 
@@ -428,7 +504,8 @@ alignment 这5种情况），在隔离 venv 里装 pysam 实测跑通全流程�
 | 1 | `module load python/ 2>/dev/null` 只重定向了 stderr，但这台集群的 `module` 命令把错误信息写到了 stdout | `check`/`smoke` 输出里混入 `ERROR: Unable to locate a modulefile for 'python/'`（无害噪音，不影响功能） | 改成 `>/dev/null 2>&1` | `a1738fc` |
 | 2 | **最关键的一个**：`sbatch` 会把提交的脚本复制到每个作业专属的 spool 目录（`/var/spool/slurm/d/job<id>/`）并执行那份拷贝，不是原始文件；脚本内部用 `readlink -f "${BASH_SOURCE[0]}"` 推导自己所在目录来找同目录下的 `oryza_besthit_damage_filter.py`，这个推导在 SLURM job 里跑的时候会指向错误的 spool 目录 | smoke test 实际报错：`python3: can't open file '/var/spool/slurm/d/job1807625/oryza_besthit_damage_filter.py': No such file or directory` | 提交时把已经在提交端正确解析好的 `PY_SCRIPT` 绝对路径通过 `--export="ALL,PY_SCRIPT=${PY_SCRIPT}"` 显式传进 job 环境，job 内不再重新推导 | `a1738fc` |
 | 3 | 无 `submit all` / `local` 模式，用户批量跑/本地调试不方便 | — | 新增 `submit all`（自动发现已完成mapping的样本）和 `local`/`local all`（前台不走 sbatch，复用同一套 worker + `.finished` 跳过逻辑） | `83a0f6f` |
-| 4 | `asian_rice_panel.acc2taxid` **整份文件** 4529/4530 系统性反标（最初误判为只有`np7`等12个基因组按名字错标，用户截图纠正为全文件二元对调），且`all_wgs_asian_irgsp.acc2taxid`的三源合并配方一度以为已丢失 | 用户先用染色体MD5比对发现np7错标；后贴出文件截图证明是整文件反标（`G25_ruf_W*`标成4530、`IRGSP-1.0_genome`/`X24_kas`标成4529）；用户在服务器`taxonomy_CPH`目录下找到了三源合并的真实配方 | 见0.5节，`rebuild_all_wgs_asian_irgsp_acc2taxid.sh`完整重建+全文件4529/4530互换（取代已删除的`fix_asian_rice_panel_taxid.sh`补丁式方案和基于12基因组误判的第一版重建脚本），**待服务器实跑验证** | `8ba66b4`（当前版本，全文件互换）、`3edf2dbc`（第一版重建，已废弃）、`b586778`（删除最早补丁脚本） |
+| 4 | `asian_rice_panel.acc2taxid` **整份文件** 4529/4530 系统性反标（最初误判为只有`np7`等12个基因组按名字错标，用户截图纠正为全文件二元对调），且`all_wgs_asian_irgsp.acc2taxid`的三源合并配方一度以为已丢失 | 用户先用染色体MD5比对发现np7错标；后贴出文件截图证明是整文件反标（`G25_ruf_W*`标成4530、`IRGSP-1.0_genome`/`X24_kas`标成4529）；用户在服务器`taxonomy_CPH`目录下找到了三源合并的真实配方 | 见0.5节，`rebuild_all_wgs_asian_irgsp_acc2taxid.sh`完整重建+全文件4529/4530互换（取代已删除的`fix_asian_rice_panel_taxid.sh`补丁式方案和基于12基因组误判的第一版重建脚本）——**服务器dry-run已验证方向正确**，见0.6节 | `8ba66b4`（全文件互换，服务器验证过）、`3edf2dbc`（第一版重建，已废弃）、`b586778`（删除最早补丁脚本） |
+| 5 | `irgsp.acc2taxid`有一行字面表头(`accession/accession.version/taxid`)，如果原样`cat`进合并文件，第3列会是非数字字符串`"taxid"`，besthit脚本解析taxid时会出问题——服务器真实dry-run才暴露出来，本地合成数据测试没覆盖这个场景 | 服务器dry-run输出里`irgsp.acc2taxid`第3列分布显示`1 taxid`（应该全是数字taxid） | 见0.6节，新增Step 2b检查三个源文件里第3列是否为纯数字，`--apply`阶段自动过滤非数字taxid行——**只在本地合成数据测试过，还没在服务器重新跑dry-run确认**，是明天第一件事 | `2965348` |
 
 **重要经验**：bug #2 这一类"脚本自我定位"的坑，本地测试完全测不出来（本机
 没有 sbatch，只能测 `run`/`local` 这两个不依赖 `sbatch` 拷贝脚本的路径），
@@ -754,12 +831,13 @@ DTH8/Ghd8经典大片段缺失（3024份现代品种里5.4%携带这个缺失，
 
 ## 9. 给下一个接手者的具体待办（按优先级，2026-08-08更新后已重排）
 
-1. 【当前最优先，比之前预期的影响面更大】0.5节：在服务器跑
-   `rebuild_all_wgs_asian_irgsp_acc2taxid.sh`（先dry-run，重点看两处输出：
-   ①`asian_rice_panel.acc2taxid`修正前后的taxid分布+抽样对比，确认整文件
-   互换方向正确；②irgsp.acc2taxid的taxid分布，确认它有没有同样的整体反标
-   问题；都确认无误后再--apply），完整重建`all_wgs_asian_irgsp.acc2taxid`，
-   然后**重新统计第6.1节的物种contig数表并重新评估"sativa覆盖度偏低"这个
+1. 【当前最优先，明天开工第一件事】0.6节：服务器dry-run已经跑过一次，
+   证实互换方向完全正确（详见0.6节的真实输出数字），但发现`irgsp.acc2taxid`
+   有一行表头会污染合并文件，脚本已修复（commit `2965348`）但**这个修复
+   本身还没在服务器上重新验证过**。步骤：①重新下载最新脚本；②再跑一次
+   dry-run，确认Step 2b显示`irgsp.acc2taxid 非数字taxid行数 = 1`且被正确
+   识别；③确认无误后`--apply`，完整重建`all_wgs_asian_irgsp.acc2taxid`；
+   ④**重新统计第6.1节的物种contig数表并重新评估"sativa覆盖度偏低"这个
    结论是否仍然成立**（这次不是小幅数字修正，"sativa 111条/rufipogon 717条"
    这两个数字本身可能是对调的，结论有可能反转，不能假设方向不变），更新
    这份文档。
