@@ -11,8 +11,10 @@
 
 两个参考 panel 已经到位(见第1节实际路径)。坐标系核对已完成(见3.1)：染色体
 命名一致、REF/ALT方向虽相反但mergeit可自动处理；`asn720data`已决定弃用
-(密度太低)。当前最优先的事是执行3.2节的convertf+mergeit，把两个panel转成
-同一格式求交集，再动手写pseudo-haplotype调用脚本。
+(密度太低)。convertf+mergeit 的 par 文件和执行脚本已写好并提交
+(`scripts/ecotype_pca/par.PLINK.EIGENSTRAT`、`par.MERGE`、
+`run_convert_merge.sh`，见3.2节step 2)，当前最优先的事是在服务器上跑这个
+脚本，把两个panel转成同一格式求交集，再动手写pseudo-haplotype调用脚本。
 
 ## 1. 数据库
 
@@ -135,30 +137,25 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
 
 1. ~~确认 `6.7M_720` 和 `asn720data` 的关系~~——**已决定弃用`asn720data`
    (94,974个SNP密度太低)，只用`asn720.6m.*`，这条不再需要，见1.2节。
-2. **格式统一 + 求交集**：
+2. **格式统一 + 求交集**——par文件和执行脚本已写好并提交到
+   `scripts/ecotype_pca/`，服务器上直接跑：
    ```bash
-   # a) 29M_3k 用原始(裸数字染色体)bim 转 EIGENSTRAT，不要用chr01改名版
-   cd /home/scratch/yinmt202607/db/29M_3k
-   cat > par.PLINK.EIGENSTRAT << 'PAREOF'
-   genotypename:    NB_final_snp.bed
-   snpname:         NB_final_snp.bim.orig
-   indivname:       NB_final_snp.fam
-   outputformat:    EIGENSTRAT
-   genotypeoutname: NB_final_snp.eigenstratgeno
-   snpoutname:      NB_final_snp.snp
-   indivoutname:    NB_final_snp.ind
-   familynames:     NO
-   PAREOF
-   convertf -p par.PLINK.EIGENSTRAT
-
-   # b) 用 scripts/ecotype_pca/check_ref.py 再核对一次转换后的.snp，
-   #    确认convertf本身没有把A1/A2顺序转错
-   python3 check_ref.py NB_final_snp.snp snp 200
-
-   # c) mergeit 合并 29M_3k(转换后) 与 6.7M_720，剔除strand-ambiguous
-   #    位点(A/T、C/G)，取共享位点
-   mergeit -p par.MERGE
+   cd /path/to/rice_adna_pipeline/scripts/ecotype_pca
+   bash run_convert_merge.sh
    ```
+   脚本依次做三件事(对应下面a/b/c)：
+   - `par.PLINK.EIGENSTRAT`：29M_3k 用原始(裸数字染色体)bim 转 EIGENSTRAT，
+     不要用chr01改名版
+   - 转换后自动跑一次 `check_ref.py`，核对convertf本身没有把A1/A2顺序转错
+   - `par.MERGE`：mergeit 合并 29M_3k(转换后) 与 6.7M_720，剔除
+     strand-ambiguous(A/T、C/G)位点，取共享位点，产出写到
+     `db/merged_29M3k_6M7_720/merged.{geno,snp,ind}`
+   - ⚠️`par.MERGE`里的参数名(`geno1/snp1/ind1`、`genooutfilename`等)是按
+     EIGENSOFT mergeit的标准约定写的，没有在服务器上实际跑过验证——如果
+     报"unrecognized parameter"一类的错，把报错贴回来，或者对照你服务器
+     上EIGENSOFT安装目录里mergeit的README核对一下参数名
+   - 需要`convertf`/`mergeit`在PATH里、`python3`能`import pysam`
+     (`check_ref.py`用到)
 3. **旱稻/水稻(或至少 indica/aus/japonica/aromatic 亚群)标签来源仍未解决**——
    这是 `docs/3krgp_integration_and_simulation_prep.md` 待办第4条就已经标注
    的老问题("passport分类表下载(SNP-Seek)—— PCA路径最大卡点")，SNP-Seek

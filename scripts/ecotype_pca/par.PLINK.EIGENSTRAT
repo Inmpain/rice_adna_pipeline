@@ -1,0 +1,8 @@
+genotypename:    NB_final_snp.bed
+snpname:         NB_final_snp.bim.orig
+indivname:       NB_final_snp.fam
+outputformat:    EIGENSTRAT
+genotypeoutname: NB_final_snp.eigenstratgeno
+snpoutname:      NB_final_snp.snp
+indivoutname:    NB_final_snp.ind
+familynames:     NO

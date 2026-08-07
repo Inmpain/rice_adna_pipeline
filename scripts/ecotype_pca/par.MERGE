@@ -1,0 +1,14 @@
+geno1: /home/scratch/yinmt202607/db/29M_3k/NB_final_snp.eigenstratgeno
+snp1:  /home/scratch/yinmt202607/db/29M_3k/NB_final_snp.snp
+ind1:  /home/scratch/yinmt202607/db/29M_3k/NB_final_snp.ind
+geno2: /home/scratch/yinmt202607/db/6.7M_720/asn720.6m.geno
+snp2:  /home/scratch/yinmt202607/db/6.7M_720/asn720.6m.snp
+ind2:  /home/scratch/yinmt202607/db/6.7M_720/asn720.6m.ind
+genooutfilename: /home/scratch/yinmt202607/db/merged_29M3k_6M7_720/merged.geno
+snpoutfilename:  /home/scratch/yinmt202607/db/merged_29M3k_6M7_720/merged.snp
+indoutfilename:  /home/scratch/yinmt202607/db/merged_29M3k_6M7_720/merged.ind
+outputformat: EIGENSTRAT
+strandcheck: YES
+allowdups: NO
+hashcheck: NO
+docheck: YES
