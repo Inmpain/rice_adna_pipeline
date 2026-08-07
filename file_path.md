@@ -7,6 +7,7 @@
 > ⚠️ **本仓库还有3个未合并进main的工作分支**（`codex/oryza-screen-merge`、
 > `codex/oryza-competitive-mapping`、`codex/ecotype-pca-panel`），只读
 > main分支看不到完整现状。四分支横向汇总见 `docs/REPO_OVERVIEW_STATUS.md`。
+> 科研目标/证据阶梯/实施阶段的项目级框架见 `docs/RESEARCH_ROADMAP.md`。
 
 最后更新: 2026-08-07
 
@@ -38,7 +39,7 @@
 | `7_angor_capture_panel2/data/reads/` | capture panel2原始reads | 同上 |
 | `4.mcp_reshotgun/data/reads/` | MCP reshotgun proxy样本 | **不属于本项目16个angkor古稻样本**，文件名格式`LV{数字}-LV{数字}-proxy...`(短横线)，跟真实panel文件`LV{数字}_RicePanel{1|2}...`(下划线)不同，务必在任何统计脚本里显式排除 |
 | `angkor_robot_library.txt` | 样本元数据总表 | 含`Library_ID`→`robot_sample_id`映射、`Depth`(考古地层深度,cm)、`Age`(公历年代)，跨度约公元1160-1981年 |
-| `asn720data/asn720.pop.{bed,bim,fam}` | 720份现代品种PLINK基因型 | 94974个SNP位点，⚠️与16个angkor样本的关系尚未最终确认(是否包含、是否capture panel来源)——**已在`ecotype-pca-panel`分支决定弃用**，改用`db/6.7M_720/asn720.6m.*` |
+| `asn720data/asn720.pop.{bed,bim,fam}` | 720份现代品种PLINK基因型 | 94974个SNP位点，⚠️与16个angkor样本的关系尚未最终确认(是否包含、是否capture panel来源)——基因型数据密度太低不用于PCA，但`.fam`的FID列(`OrA-OrF`群体标签)是`ecotype-pca-panel`分支目前找到的关键标签来源，详见该分支`docs/ECOTYPE_PCA_PANEL.md` |
 
 ---
 
@@ -87,7 +88,10 @@ db/3k/                               # 【资源组B】3K Rice Genome Project数
 │   └── NB_DEL_mergesam_clustered.txt  # 解压后的DEL记录
 └── wild/
     └── {SampleID}.transfer.merge.chr.fasta  # 140+野生稻/近缘种染色体级组装基因组
-                                                # ⚠️物种身份未确认，见 ORYZA_BESTHIT_HANDOFF.md 第7.2节
+                                                # ⚠️物种身份未确认，是否与Guo et al. 2025
+                                                # pangenome论文的145组装同源待查，见
+                                                # ORYZA_BESTHIT_HANDOFF.md第7.2节 /
+                                                # RESEARCH_ROADMAP.md第2节C/第6节P0第2条
 
 db/29M_3k/                           # 【ecotype-pca-panel分支用】3K RG 29mio biallelic SNP
 ├── NB_final_snp.bed.gz / .bim.gz / .fam.gz   # 3024份材料，PLINK格式，与irgsp.fa坐标系一致
@@ -193,14 +197,16 @@ tests/param_matrix_bt2_vs_bwa/
 （`codex/oryza-screen-merge`、`codex/oryza-competitive-mapping`、
 `codex/ecotype-pca-panel`）各自有独立的`docs/`和`scripts/`内容，
 不会出现在main分支里，需要单独切换查看。四分支汇总见
-`docs/REPO_OVERVIEW_STATUS.md`。
+`docs/REPO_OVERVIEW_STATUS.md`；项目级科研框架(证据阶梯/五条工作线/
+Phase 0-4实施计划)见`docs/RESEARCH_ROADMAP.md`。
 
 ```
 rice_adna_pipeline/ (main分支)
 ├── PROJECT_STATUS.md          # ⚠️已知问题: 曾被意外截断，只剩最后一次追加内容，需修复
 ├── docs/
 │   ├── file_paths.md                              # 本文档
-│   ├── REPO_OVERVIEW_STATUS.md                    # 四分支跨线现状汇总(新增)
+│   ├── REPO_OVERVIEW_STATUS.md                    # 四分支跨线现状汇总
+│   ├── RESEARCH_ROADMAP.md                        # 证据阶梯+五条工作线+实施阶段(新增)
 │   ├── decisions_log.md                           # 关键决策记录
 │   ├── research_goals.md                          # 四层研究目标拆解
 │   ├── GIT_USAGE.md                                # Git操作指南
@@ -256,7 +262,8 @@ git show <commit_hash>:PROJECT_STATUS.md > /tmp/old_version.md
 
 | 我想知道... | 去看... |
 |---|---|
-| **四个分支现在各自做到哪一步**（先看这个） | `docs/REPO_OVERVIEW_STATUS.md`(main分支，跨分支横向汇总) |
+| **我们到底要证明什么、现在能证明到哪一级**（先看这个） | `docs/RESEARCH_ROADMAP.md`(main分支，证据阶梯+五条工作线+实施阶段) |
+| **四个分支现在各自做到哪一步** | `docs/REPO_OVERVIEW_STATUS.md`(main分支，跨分支横向汇总) |
 | 项目现在做到哪一步、下一步该干什么 | `PROJECT_STATUS.md`(⚠️当前已损坏，需先修复) |
 | 为什么选了BWA而不是Bowtie2 | `docs/decisions_log.md` + `docs/09_extraction_mapping_matrix_final.md` |
 | 57基因命中数据为什么只有约2/3可信 | `docs/flank1kb_msa_exploration.md` |
