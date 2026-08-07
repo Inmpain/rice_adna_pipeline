@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# 真正重建 all_wgs_asian_irgsp.acc2taxid（不再是补丁式——2026-08-08确认了
-# 真实的三源合并配方，可以完整重建替换旧文件）。
+# 重建 all_wgs_asian_irgsp.acc2taxid（2026-08-08第二次修正：确认
+# asian_rice_panel.acc2taxid 里 4529/4530 是整份文件系统性反标，不是只有
+# np7 等12个基因组——凡是标4529(rufipogon)的应为4530(sativa)，凡是标4530
+# 的应为4529，全文件做一次二元互换即可，不需要按基因组名字分别判断）。
 #
 # 三个源文件：
 #   1. WGS真核库taxid（独立大文件，406M，跟panel目录不在一起）：
 #      /home/database/ref20250728/taxonomy_CPH/wgs_eukaryota.acc2taxid
 #   2. 亚洲水稻panel taxid：<panel目录>/asian_rice_panel.acc2taxid
-#      （本脚本会先修正np7等12个基因组的taxid错标，见下方Step 1）
+#      （本脚本会先把这份文件里的4529/4530做整体互换，见下方Step 1）
 #   3. IRGSP taxid：<panel目录>/irgsp.acc2taxid
-#      （本脚本只做统计报告，不自动改——格式和是否有同样错标问题还没验证过，
+#      （本脚本只做统计报告，不自动改——是否也有同样的反标问题还没验证过，
 #      见下方Step 2的输出，需要人工确认后再决定要不要修）
 #
 # 背景：docs/asian_rice_panel_reference_design_conversation.md +
@@ -51,26 +53,27 @@ done
 
 TS="$(date +%Y%m%d-%H%M%S)"
 
-echo "== Step 1: 修正 asian_rice_panel.acc2taxid 的taxid错标 =="
+echo "== Step 1: 整体互换 asian_rice_panel.acc2taxid 里的 4529/4530 =="
+echo "-- 修正前 taxid(第3列) 分布 --"
+cut -f3 "$PANEL_ACC2TAXID" | sort | uniq -c
+
 FIXED_PANEL="$PANEL_DIR/asian_rice_panel.acc2taxid.fixed"
 awk 'BEGIN{FS=OFS="\t"}
 {
-    if ($1 ~ /^(np7|mh63|X24_kas|azu|arc|liuxu)\./) {
-        if ($3 != 4530) { changed++ }
-        $3 = 4530
-    }
-    else if ($1 ~ /^G25_ruf_(W1214|W0169|W1750|W3037|W1536|W1726|W2064)\./) {
-        if ($3 != 4529) { changed++ }
-        $3 = 4529
-    }
+    if ($3 == 4529) { $3 = 4530; changed++ }
+    else if ($3 == 4530) { $3 = 4529; changed++ }
     print
 }
 END { print "changed_lines=" (changed+0) > "/dev/stderr" }' "$PANEL_ACC2TAXID" > "$FIXED_PANEL"
 
-echo "-- 修正前后对比(只显示np7的，其余11个基因组同理) --"
-grep -E '^np7\.' "$PANEL_ACC2TAXID" | head -3
-echo "  ↓ 修正为 ↓"
-grep -E '^np7\.' "$FIXED_PANEL" | head -3
+echo "-- 修正后 taxid(第3列) 分布 --"
+cut -f3 "$FIXED_PANEL" | sort | uniq -c
+
+echo "-- 抽样对比(前5行，格式: accession  修正前taxid -> 修正后taxid) --"
+paste <(cut -f1 "$PANEL_ACC2TAXID" | head -5) \
+      <(cut -f3 "$PANEL_ACC2TAXID" | head -5) \
+      <(cut -f3 "$FIXED_PANEL" | head -5) | \
+  awk 'BEGIN{FS=OFS="\t"} {print $1, $2, "->", $3}'
 
 echo ""
 echo "== Step 2: 检查 irgsp.acc2taxid 的taxid分布(不自动改，只报告) =="
@@ -78,9 +81,10 @@ echo "-- irgsp.acc2taxid 前5行 --"
 head -5 "$IRGSP_ACC2TAXID"
 echo "-- irgsp.acc2taxid 第3列(taxid)分布 --"
 cut -f3 "$IRGSP_ACC2TAXID" | sort | uniq -c
-echo "⚠️ 如果上面全是4529(rufipogon)而不是4530(sativa)，说明irgsp.acc2taxid"
-echo "   也有同样的错标问题，需要另外处理——这个脚本目前不会自动修正它，"
-echo "   请把上面的输出贴回来确认后再决定"
+echo "⚠️ 结合asian_rice_panel.acc2taxid的教训——如果上面显示的物种和taxid对不上"
+echo "   （比如整批应该是4530(sativa)的却标成4529，或者反过来），说明"
+echo "   irgsp.acc2taxid 也有同样的反标问题，需要另外处理——这个脚本目前"
+echo "   不会自动修正它，请把上面的输出贴回来确认后再决定"
 
 echo ""
 echo "== Step 3: 三源合并统计(dry-run先看行数，不代表最终结果) =="
@@ -94,7 +98,7 @@ fi
 if [[ "$APPLY" -eq 0 ]]; then
   echo ""
   echo "== DRY RUN 完成，没有写任何文件 =="
-  echo "确认上面的数字、np7修正结果、irgsp.acc2taxid的taxid分布都没问题后，"
+  echo "确认上面的数字、taxid互换结果、irgsp.acc2taxid的taxid分布都没问题后，"
   echo "加 --apply 重跑一次才会真正落盘替换"
   rm -f "$FIXED_PANEL"
   exit 0
