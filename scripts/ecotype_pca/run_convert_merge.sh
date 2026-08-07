@@ -10,8 +10,13 @@ OUT="$DB/merged_29M3k_6M7_720"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # a) 29M_3k: PLINK bed/bim.orig/fam -> EIGENSTRAT
+#    convertf靠文件后缀自动识别PACKEDPED格式(snp文件必须.pedsnp/.map/.bim结尾，indiv文件必须
+#    .pedind/.ped结尾)，没有inputformat这个参数。我们的原始文件名不符合(bim.orig/.fam)，
+#    所以先建好后缀正确的软链接(不复制大文件)，再让convertf读
 #    用裸数字染色体版 NB_final_snp.bim.orig，不要用改过染色体名(chr01)的版本
 cd "$PANEL_29M"
+ln -sf NB_final_snp.bim.orig NB_final_snp.rawchrom.bim
+ln -sf NB_final_snp.fam NB_final_snp.rawchrom.pedind
 convertf -p "$SCRIPT_DIR/par.PLINK.EIGENSTRAT"
 
 # b) 核对convertf转换后的.snp，确认A1/A2方向没有被转错
