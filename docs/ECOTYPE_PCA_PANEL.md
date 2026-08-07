@@ -18,10 +18,27 @@ PLINK→EIGENSTRAT)已在服务器上验证跑通(2026-08-07，见3.2节step 2)�
 标签(`OrA`/`OrB`/`OrC`/`OrD`/`OrE`/`OrF`...)**，键在跟`asn720.6m.ind`同一套
 `ERR0685xx`风格样本ID上——而`asn720.6m.ind`目前把这批样本的群体标签记成
 笼统的`control`。这很可能就是第3.2节第3条一直找不到的旱稻/水稻标签来源，
-比指望SNP-Seek或翻论文补充材料直接得多。详见1.2/3.2。当前最优先的事分两条
-并行：①接着跑 `run_convert_merge.sh` 剩下的 mergeit 那步；②核实
-`asn720data`标签能覆盖`asn720.6m.ind`里多少样本、读`db/wild_rice_pangenome_
-README.txt`(新发现，内容还没看)搞清楚`OrA-OrF`具体定义。
+比指望SNP-Seek或翻论文补充材料直接得多。详见1.2/3.2。
+
+**2026-08-08更新(mergeit已启动，结果未确认)**：`par.MERGE`已在服务器上
+执行(`cd scripts/ecotype_pca && mergeit -p par.MERGE`)，参数文件被正常读入
+(`geno1/snp1/ind1`等参数名这次没有触发"unrecognized parameter"，看来标准
+命名约定这次是对的)，出现了跟convertf那次同款的良性提示`*** warning: first
+snp 1026 is number...`(非致命，SNP ID是纯数字触发的启发式提示，不影响运行)。
+**session结束时mergeit尚未确认完成**——这次是主动结束会话睡觉，不是等到
+运行结果才停的，下一个session第一件事应该是核实：① mergeit进程是否还在跑
+(`ps aux | grep mergeit`)或已经结束；② 结束的话看`db/merged_29M3k_6M7_720/`
+下`merged.{geno,snp,ind}`是否存在、`wc -l`是否等于两个输入panel位点交集的
+合理量级；③ 有没有报错(尤其类似convertf那次"文件后缀识别"这类隐藏坑，
+mergeit这次三个snp/ind输入文件本身已经是EIGENSTRAT原生格式，理论上不该
+再踩同一个坑，但没有实测验证过)。
+
+当前最优先的事三条并行：①确认上面mergeit的执行结果(未完成则继续等/排查，
+已完成则核对交集位点数是否合理)；②核实`asn720data`标签能覆盖`asn720.6m.ind`
+里多少样本、读`db/wild_rice_pangenome_README.txt`(新发现，内容还没看)搞清楚
+`OrA-OrF`具体定义；③注意：③号任务在另一个会话窗口(疑似Codex CLI)同步推进
+中，该文档`db/wild_rice_pangenome_README.txt`内容那部分是那边在等用户贴，
+不要重复索取。
 
 ## 1. 数据库
 
@@ -203,16 +220,22 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
      修复：脚本会自动建软链接`NB_final_snp.rawchrom.bim`→`.bim.orig`、
      `NB_final_snp.rawchrom.pedind`→`.fam`(不复制大文件)，par文件指向
      这两个软链接名。`.ind`输出里群体标签是`???`是预期行为(`.fam`第6列
-     本来就没有群体信息)，不是这步转丢的。
+     本来就没有群体信息)，不是这步转丢的。转换耗时约4.4小时CPU时间、峰值
+     内存约40.8GB(29,635,224 SNP × 3024样本的EIGENSTRAT文本输出体量巨大，
+     ~90GB量级，这不是卡住，是数据量真实需要这么久，接手人排队列/申请
+     资源时可以参考这个数字)。
    - 转换后自动跑一次 `check_ref.py`，核对convertf本身没有把A1/A2顺序转错
    - `par.MERGE`：mergeit 合并 29M_3k(转换后) 与 6.7M_720，剔除
      strand-ambiguous(A/T、C/G)位点，取共享位点，产出写到
      `db/merged_29M3k_6M7_720/merged.{geno,snp,ind}`。
-     **⏳尚未在服务器验证**——`par.MERGE`里的参数名(`geno1/snp1/ind1`、
-     `genooutfilename`等)是按EIGENSOFT mergeit的标准约定写的，鉴于
-     convertf那步"标准约定"就踩过一次坑(文件后缀识别)，这步大概率也会
-     报错，报错的话把完整输出贴回来，跟convertf那次一样查server上
-     mergeit的README/源码定位，不要凭README字面直接猜下一次修复
+     **⏳2026-08-08已在服务器执行(`mergeit -p par.MERGE`)，但session结束时
+     未确认完成**——参数文件被正常读入，没有出现"unrecognized parameter"
+     类错误(说明par.MERGE里`geno1/snp1/ind1`等标准参数名这次是对的)，只
+     看到跟convertf那次同款的良性提示(SNP ID是纯数字)。下一个session先
+     确认：进程是否还在跑(`ps aux | grep mergeit`)、`merged.{geno,snp,ind}`
+     是否已生成、行数是否落在合理的交集量级。如果报错，参照convertf那次
+     的方法——不要凭README字面直接猜下一次修复，先查服务器上mergeit的
+     源码/README定位真实原因。
    - 需要`convertf`/`mergeit`在PATH里、`python3`能`import pysam`
      (`check_ref.py`用到)
 3. **旱稻/水稻(或至少 indica/aus/japonica/aromatic 亚群)标签来源——
@@ -222,7 +245,8 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
    保留：*A pangenome reference of wild and cultivated rice*(Nature 2025，
    PMID 40240605)里129份*O. rufipogon*的`Or-Ia/Or-Ib/Or-II/Or-IIIa/
    Or-IIIb`谱系分组(该文摘要提到"所有驯化位点都来自japonica祖先谱系
-   Or-IIIa")，以及`db/wild_rice_pangenome_README.txt`(新发现，未读)。
+   Or-IIIa")，以及`db/wild_rice_pangenome_README.txt`(新发现，未读，
+   **另一个会话窗口正在处理，等对方回复cat的内容，不要重复索取**)。
    三个来源不确定是否互相独立还是同源，第1条查清楚之后再确定最终用哪个/
    要不要交叉验证。这一步不阻塞2，可以并行。
 4. pseudo-haplotype 调用脚本、smartpca 具体参数(尤其是 `-lsqproject` 相关
