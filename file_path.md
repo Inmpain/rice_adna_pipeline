@@ -8,8 +8,10 @@
 > `codex/oryza-competitive-mapping`、`codex/ecotype-pca-panel`），只读
 > main分支看不到完整现状。四分支横向汇总见 `docs/REPO_OVERVIEW_STATUS.md`。
 > 科研目标/证据阶梯/实施阶段的项目级框架见 `docs/RESEARCH_ROADMAP.md`。
+> 我们关心的论文和各自用途见 `docs/LITERATURE.md`。**全部文档的目录索引
+> 见本文档第九节**。
 
-最后更新: 2026-08-07
+最后更新: 2026-08-08
 
 ---
 
@@ -203,27 +205,31 @@ Phase 0-4实施计划)见`docs/RESEARCH_ROADMAP.md`。
 ```
 rice_adna_pipeline/ (main分支)
 ├── PROJECT_STATUS.md          # ⚠️已知问题: 曾被意外截断，只剩最后一次追加内容，需修复
+├── file_path.md                # 本文档
 ├── docs/
-│   ├── file_paths.md                              # 本文档
 │   ├── REPO_OVERVIEW_STATUS.md                    # 四分支跨线现状汇总
-│   ├── RESEARCH_ROADMAP.md                        # 证据阶梯+五条工作线+实施阶段(新增)
+│   ├── RESEARCH_ROADMAP.md                        # 证据阶梯+五条工作线+实施阶段
+│   ├── LITERATURE.md                              # 我们关心的论文+各自用途(新增)
+│   ├── references/3k_rice_genomes_project/        # 3K项目原始文档(新增，见LITERATURE.md第3节)
 │   ├── decisions_log.md                           # 关键决策记录
-│   ├── research_goals.md                          # 四层研究目标拆解
-│   ├── GIT_USAGE.md                                # Git操作指南
 │   ├── flank1kb_msa_exploration.md                # 低复杂度QC发现全过程
 │   ├── 3krgp_integration_and_simulation_prep.md   # 3K RG/SV/NGSNGS环境搭建
-│   ├── 09_extraction_mapping_matrix_final.md      # 9格矩阵测试完整记录
-│   └── IGV_visualization_guide.md                 # IGV可视化包使用说明
+│   └── 09_extraction_mapping_matrix_final.md      # 9格矩阵测试完整记录
 ├── scripts/server_originals/   # 9个真实生产脚本(唯一权威版本)
 ├── tools/lowcomplexity_qc/     # 可复用低复杂度QC工具
 ├── tests/param_matrix_bt2_vs_bwa/  # 9格矩阵测试(脚本+结果表+图，不含BAM)
 └── results/                    # 各阶段统计表格快照(不含BAM等大文件)
 ```
 
-**⚠️git仓库当前已知问题(2026-08-05核实)**：
+**⚠️git仓库当前已知问题**：
 - `PROJECT_STATUS.md`被截断，只剩最新一次追加内容，原始核心内容丢失
-- 其余文档(`decisions_log.md`等)是否完整、`IGV_visualization_guide.md`是否已提交，
-  尚未逐一核实，建议接手人先跑一次`find . -type f`+`wc -l`核对，见下节
+  （2026-08-05发现，尚未修复）
+- **2026-08-08用GitHub API核实**：早前文档里提到过的`docs/research_goals.md`
+  `docs/GIT_USAGE.md`、`docs/IGV_visualization_guide.md`三个文件在main分支
+  `docs/`目录下**实际都不存在**——不是"尚未核实"，是确认过没有这几个文件。
+  可能是曾经写过但没提交，也可能是规划过没有真的写。上面第八节快速定位表
+  里涉及这三个文件的行已标注⚠️，接手人如果需要这些内容，需要重新写，不要
+  假设它们存在
 
 ---
 
@@ -268,11 +274,60 @@ git show <commit_hash>:PROJECT_STATUS.md > /tmp/old_version.md
 | 为什么选了BWA而不是Bowtie2 | `docs/decisions_log.md` + `docs/09_extraction_mapping_matrix_final.md` |
 | 57基因命中数据为什么只有约2/3可信 | `docs/flank1kb_msa_exploration.md` |
 | 3K RG数据怎么用、SV断点怎么查的 | `docs/3krgp_integration_and_simulation_prep.md` |
-| 某个具体文件在服务器哪个路径 | 本文档(`docs/file_paths.md`) |
-| 怎么用git提交新东西 | `docs/GIT_USAGE.md` |
-| 怎么在IGV里看数据 | `docs/IGV_visualization_guide.md` |
+| 某个具体文件在服务器哪个路径 | 本文档(`file_path.md`) |
+| 怎么用git提交新东西 | ⚠️`docs/GIT_USAGE.md`不存在(见上方已知问题)，暂时没有专门文档 |
+| 怎么在IGV里看数据 | ⚠️`docs/IGV_visualization_guide.md`不存在(见上方已知问题)，暂时没有专门文档 |
 | 某个脚本具体是干什么的 | `scripts/server_originals/`(真实脚本) 或
   `tests/param_matrix_bt2_vs_bwa/scripts/`(参数测试脚本) |
 | Oryza best-hit过滤(竞争性比对+古DNA损伤校正)进展 | 切到`codex/oryza-competitive-mapping`分支，读`docs/ORYZA_BESTHIT_HANDOFF.md` |
 | 旱稻/水稻生态型PCA判定进展 | 切到`codex/ecotype-pca-panel`分支，读`docs/ECOTYPE_PCA_PANEL.md` |
 | 候选Oryza FASTQ怎么合并的 | 切到`codex/oryza-screen-merge`分支，读`oryza_screen_merge/README.md` |
+| 我们关心哪些论文、每篇能不能用/用在哪 | `docs/LITERATURE.md`(main分支) |
+| 3K项目的原始元数据/联盟名单/SRA映射表 | `docs/references/3k_rice_genomes_project/`(main分支) |
+| **想看全部文档的完整目录** | 本文档第九节 |
+
+---
+
+## 九、全部文档索引（跨4分支，目录式）
+
+⚠️这份索引是2026-08-08用GitHub API逐分支核实过的真实文件列表（不是凭
+记忆写的），比第八节的问答式导航更完整，但更新频率较低——如果发现和
+实际不符，以GitHub仓库当前状态为准，并回来更新这一节。链接直接带分支名，
+不管你现在在哪个分支上点开都能跳到正确内容。
+
+### main 分支
+
+| 文档 | 一句话说明 |
+|---|---|
+| [`PROJECT_STATUS.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/PROJECT_STATUS.md) | 项目进度（⚠️已知被截断，只剩最后一次追加内容） |
+| [`file_path.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/file_path.md) | 本文档，路径地图+文档总索引 |
+| [`docs/RESEARCH_ROADMAP.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/RESEARCH_ROADMAP.md) | 证据阶梯+五条工作线+Phase 0-4实施阶段，项目级科研框架 |
+| [`docs/REPO_OVERVIEW_STATUS.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/REPO_OVERVIEW_STATUS.md) | 四分支横向进度汇总 |
+| [`docs/LITERATURE.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/LITERATURE.md) | 我们关心的论文+各自用途（ORSC两篇待读、Guo 2025 pangenome、3K系列） |
+| [`docs/decisions_log.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/decisions_log.md) | 关键决策记录（如为什么选BWA不选Bowtie2） |
+| [`docs/flank1kb_msa_exploration.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/flank1kb_msa_exploration.md) | 低复杂度QC发现全过程 |
+| [`docs/3krgp_integration_and_simulation_prep.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/3krgp_integration_and_simulation_prep.md) | 3K RG数据整合+NGSNGS模拟环境搭建 |
+| [`docs/09_extraction_mapping_matrix_final.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/09_extraction_mapping_matrix_final.md) | 提取×比对9格矩阵测试完整记录 |
+| `docs/references/3k_rice_genomes_project/*` | 3K项目原始文档（非md，readme/consortium/元数据xlsx/SRA映射表，见`docs/LITERATURE.md`第3节） |
+
+### `codex/oryza-competitive-mapping` 分支
+
+| 文档 | 一句话说明 |
+|---|---|
+| [`docs/ORYZA_BESTHIT_HANDOFF.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/codex/oryza-competitive-mapping/docs/ORYZA_BESTHIT_HANDOFF.md) | Oryza best-hit（竞争性比对+古DNA损伤校正）完整接手说明，含acc2taxid taxid反标bug记录 |
+| [`docs/asian_rice_panel_reference_design_conversation.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/codex/oryza-competitive-mapping/docs/asian_rice_panel_reference_design_conversation.md) | 亚洲水稻panel参考基因组选择+taxid诊断的原始GPT讨论记录 |
+| `docs/decisions_log.md`、`docs/flank1kb_msa_exploration.md`、`docs/3krgp_integration_and_simulation_prep.md`、`docs/09_extraction_mapping_matrix_final.md` | 与main分支同名文档，从main继承，内容基本一致 |
+
+### `codex/ecotype-pca-panel` 分支
+
+| 文档 | 一句话说明 |
+|---|---|
+| [`docs/ECOTYPE_PCA_PANEL.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/codex/ecotype-pca-panel/docs/ECOTYPE_PCA_PANEL.md) | 旱稻/水稻生态型PCA判定进展，含`asn720data`标签来源发现 |
+| `docs/decisions_log.md`、`docs/flank1kb_msa_exploration.md`、`docs/3krgp_integration_and_simulation_prep.md`、`docs/09_extraction_mapping_matrix_final.md` | 与main分支同名文档，从main继承，内容基本一致 |
+
+### `codex/oryza-screen-merge` 分支
+
+| 文档 | 一句话说明 |
+|---|---|
+| [`oryza_screen_merge/README.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/codex/oryza-screen-merge/oryza_screen_merge/README.md) | 候选Oryza FASTQ合并流程说明 |
+| `PROJECT_STATUS.md`、`docs/decisions_log.md`、`docs/flank1kb_msa_exploration.md`、`docs/3krgp_integration_and_simulation_prep.md`、`docs/09_extraction_mapping_matrix_final.md` | 与main分支同名文档，从main继承，内容基本一致 |
