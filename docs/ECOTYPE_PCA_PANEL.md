@@ -50,15 +50,57 @@ ID字符串比对时也会判定"没有共同SNP"，跟convertf那次"文件名�
    有一个按位置匹配的开关/参数被漏掉了
 2. 确认`merged.{geno,snp,ind}`到底是空文件还是有内容但行数为0/接近0
 
-**如果诊断成立，标准修复思路**（不需要动`.geno`/`.ind`和原始文件，只是
-把两份`.snp`文件的ID列临时统一命名后再合并一次）：
+**用户已经看过真实数据、确认这个诊断合理，当晚就直接试了**（不等下一个
+session）——**注意要同时修正两个文件的ID，不能只改720**：`29M_3k`的ID是
+纯数字物理位置、没有染色体前缀，如果只改720那边，`29M_3k`自己内部chr1的
+`1026`和chr2的`1026`会是同一个ID字符串，存在跨染色体撞ID的风险
+（`run_convert_merge.sh`脚本注释里写的"mergeit按染色体+物理位置匹配"这句
+话本身站不住脚——`total: 0`这个实测结果就是反例，实际应该是按SNP名字
+匹配，脚本注释是没验证过的假设，写错了）。
+
+**完整命令**（不改`.geno`/`.ind`和原始`.snp`，只生成ID统一为
+`{染色体}_{物理位置}`格式的副本，输出到全新目录，不覆盖上次的
+`merged_29M3k_6M7_720/`）：
 ```bash
-# 生成ID统一为"{染色体}_{物理位置}"格式的.snp副本，不改.geno/.ind、不改行序
-awk 'BEGIN{OFS="\t"} {$1=$2"_"$4; print}' NB_final_snp.snp > NB_final_snp.idfix.snp
-awk 'BEGIN{OFS="\t"} {$1=$2"_"$4; print}' \
-  /home/scratch/yinmt202607/db/6.7M_720/asn720.6m.snp > asn720.6m.idfix.snp
-# 把par.MERGE里的snp1/snp2改指向这两个idfix文件，其余(geno1/ind1/geno2/ind2)不变，重跑mergeit
+cd /home/scratch/yinmt202607/db
+
+# 1) 生成ID统一的.snp副本(行数/行序不变，只重写第1列)
+awk 'BEGIN{OFS="\t"} {$1=$2"_"$4; print}' 29M_3k/NB_final_snp.snp \
+  > 29M_3k/NB_final_snp.idfix.snp
+awk 'BEGIN{OFS="\t"} {$1=$2"_"$4; print}' 6.7M_720/asn720.6m.snp \
+  > 6.7M_720/asn720.6m.idfix.snp
+
+# 行数必须跟原文件完全一致，否则说明awk哪里出错了，不要往下继续
+wc -l 29M_3k/NB_final_snp.snp 29M_3k/NB_final_snp.idfix.snp
+wc -l 6.7M_720/asn720.6m.snp 6.7M_720/asn720.6m.idfix.snp
+
+mkdir -p /home/scratch/yinmt202607/db/merged_29M3k_6M7_720_idfix
 ```
+```bash
+# 2) 复制一份par.MERGE，只改snp1/snp2/输出路径三处，geno1/ind1/geno2/ind2不动
+#    (在par.MERGE本来所在的目录下执行)
+cp par.MERGE par.MERGE.idfix
+sed -i \
+  -e 's#^snp1:.*#snp1:  /home/scratch/yinmt202607/db/29M_3k/NB_final_snp.idfix.snp#' \
+  -e 's#^snp2:.*#snp2:  /home/scratch/yinmt202607/db/6.7M_720/asn720.6m.idfix.snp#' \
+  -e 's#^genooutfilename:.*#genooutfilename: /home/scratch/yinmt202607/db/merged_29M3k_6M7_720_idfix/merged.geno#' \
+  -e 's#^snpoutfilename:.*#snpoutfilename:  /home/scratch/yinmt202607/db/merged_29M3k_6M7_720_idfix/merged.snp#' \
+  -e 's#^indoutfilename:.*#indoutfilename:  /home/scratch/yinmt202607/db/merged_29M3k_6M7_720_idfix/merged.ind#' \
+  par.MERGE.idfix
+cat par.MERGE.idfix   # 跑之前肉眼确认改对了
+```
+```bash
+# 3) 后台跑(上次mergeit跑了约2小时，不用一直守着)
+nohup mergeit -p par.MERGE.idfix > mergeit_idfix.log 2>&1 &
+disown
+```
+
+**验证方式**：`tail -100 mergeit_idfix.log`，重点看`Histogram of checkmatch
+return codes`那一行——如果这次不是`total: 0`而是一个大数字，说明诊断
+正确、修复生效，再核对`merged_29M3k_6M7_720_idfix/merged.snp`的行数是否
+落在两个panel交集的合理量级（比chr1单独两边3,057,565和775,775这两个数字
+小的一个量级差不多）。如果这次跑完还是`total: 0`或报错，说明诊断错了，
+需要贴完整log重新排查，不要凭这个假设继续深挖。
 
 当前最优先的事三条并行：①**（今晚新发现，提到最前面）确认mergeit
 0匹配的真实原因、决定要不要用上面的ID重命名方案重跑**；②核实`asn720data`
