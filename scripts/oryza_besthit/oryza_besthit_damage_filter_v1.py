@@ -3,44 +3,10 @@
 Per-read Oryza vs non-Oryza competitive best-hit filter, with ancient-DNA
 terminal-damage-aware NM correction.
 
-v2 (2026-08-08) -- see docs/ORYZA_BESTHIT_HANDOFF.md section 5.1b for the full
-design writeup. Two changes vs v1 (archived as
-oryza_besthit_damage_filter_v1.py, kept for reference/rollback):
-
-1. Oryza scope is now the WHOLE genus by default: every species-rank
-   descendant of taxid 4527 (Oryza) in nodes.dmp, resolved dynamically at
-   startup (see Taxonomy.genus_species_taxids below) -- not a hardcoded
-   3-species list (rufipogon/sativa/nivara). This means a read that is a
-   genuine match to, say, O. longistaminata (well represented in our WGS
-   shard, ~905 contigs) is no longer forced to compete against sativa/
-   rufipogon/nivara as if it were foreign contamination; it's Oryza either
-   way. --oryza-taxids still exists as an explicit manual override (pass it
-   to reproduce v1's narrower 3-species behavior exactly); when omitted,
-   --oryza-genus-taxid (default 4527) drives the auto-resolution.
-
-2. Optional (OFF BY DEFAULT) quality pre-gate, --min-best-similarity /
-   --max-best-raw-nm: reject a read outright, before any per-species
-   classification, if its single best raw-NM hit across ALL species fails
-   both thresholds (OR-gated if both given, matching the source idea).
-   Borrowed from a labmate's classifier
-   (besthit_competitive_top10_showOryza_optimized.py's --target-min-sim /
-   --target-max-nm). Off by default because it changes which reads even
-   reach the Oryza-vs-non-Oryza competition and has not been validated
-   against our data.
-
-One thing considered and DELIBERATELY NOT adopted from that labmate script:
-its faster MD-tag-string damage parsing also skips damage evaluation for any
-alignment whose RAW NM isn't already that species' minimum -- which assumes
-raw NM ranks the same as damage-adjusted NM. That is not guaranteed: an
-alignment with a *higher* raw NM can still end up with a *lower* adjusted NM
-if more of its mismatches happen to land inside the terminal-damage window.
-That risk is bigger for us than for the labmate script, because our default
---damage-window is 5bp per end (up to 10 possible credit) vs their 1bp (up to
-2). alignment_metrics() below is therefore left exactly as validated in v1
-(full pysam.get_aligned_pairs(with_seq=True) walk over EVERY alignment, no
-raw-NM pre-pruning) rather than risk a silent regression from an unvalidated
-rewrite. Revisit if per-sample runtime actually becomes a bottleneck -- with
-a proper side-by-side check against v1's output on real data first.
+This does NOT reuse besthit_competitive.py's hierarchical ngsLCA-style walk --
+the decision here is a flat, two-sided competition (Oryza vs everything else),
+and NM has to be corrected for expected 5'C->T / 3'G->A deamination before the
+competition is judged, which the generic classifier does not do.
 
 ======================================================================
 Per-alignment metrics (needs the BAM's NM tag, MD tag and query SEQ):
@@ -80,8 +46,8 @@ up nodes.dmp to the nearest rank=="species" ancestor). Within a species, only
 the single best alignment survives, ranked by
     (adjusted_NM asc, NM asc, substitution_count asc, AS desc, reference_name)
 Non-Oryza species are ranked the same way and the best 10 are kept
-(--top-n); the Oryza species (genus-wide by default, see above) are ALWAYS
-kept in addition, never competing for one of the 10 non-Oryza slots.
+(--top-n); the Oryza species (taxids in --oryza-taxids) are ALWAYS kept in
+addition, never competing for one of the 10 non-Oryza slots.
 
   best_nonoryza = best-ranked non-Oryza species for this read (or none)
   best_oryza    = best-ranked Oryza species for this read (or none)
@@ -98,11 +64,8 @@ is NOT written to the top10 audit table (nothing to rank). A candidate read
 that never appears in the BAM at all (bowtie2 --no-unal dropped it -- no hit
 anywhere in the 131 databases) gets no decisions.tsv row but IS folded into
 the unclassified_reads bucket of the sample summary, so that
-    input_reads == kept_reads + rejected_nonoryza_better + rejected_no_oryza
-                   + rejected_low_quality + unclassified_reads
+    input_reads == kept_reads + rejected_nonoryza_better + rejected_no_oryza + unclassified_reads
 holds exactly (checked at the end, hard failure unless --limit-reads is set).
-rejected_low_quality is always 0 unless the optional pre-gate (see above) is
-enabled.
 
 MAPQ is never used -- under bowtie2 -k 100 competitive mapping MAPQ is not a
 meaningful best-hit signal (see docs/ORYZA_BESTHIT_HANDOFF.md).
@@ -117,12 +80,7 @@ Outputs (all written to a .tmp path first, then os.rename'd -- atomic):
                                            samples for besthit_summary.tsv --
                                            done by the submit script, not here,
                                            so parallel per-sample SLURM jobs
-                                           never race on one shared file.
-                                           NOTE: this v2 summary.tsv has one
-                                           more column, rejected_low_quality,
-                                           than v1's -- don't `merge` v1 and
-                                           v2 sample summaries together
-                                           without checking columns line up.)
+                                           never race on one shared file)
   <outdir>/<sample>.finished             (touched only after every output
                                            above succeeded AND the consistency
                                            check passed)
@@ -148,7 +106,6 @@ class Taxonomy:
         self.parent = {}
         self.rank = {}
         self.name = {}
-        self.children = {}       # NEW in v2: parent_taxid -> set(child_taxid)
         self._species_cache = {}
         with open(nodes_file) as fh:
             for line in fh:
@@ -156,8 +113,7 @@ class Taxonomy:
                 if len(p) < 3:
                     continue
                 tid = p[0].strip()
-                par = p[1].strip()
-                self.parent[tid] = par
+                self.parent[tid] = p[1].strip()
                 self.rank[tid] = p[2].strip()
         with open(names_file) as fh:
             for line in fh:
@@ -167,10 +123,6 @@ class Taxonomy:
                 if len(p) < 2:
                     continue
                 self.name[p[0].strip()] = p[1].strip()
-        for tid, par in self.parent.items():
-            if tid == par:      # root points to itself; not its own child
-                continue
-            self.children.setdefault(par, set()).add(tid)
 
     def species_of(self, taxid):
         """Walk up from taxid to the nearest rank=='species' ancestor
@@ -197,26 +149,6 @@ class Taxonomy:
 
     def sci_name(self, taxid):
         return self.name.get(taxid, taxid)
-
-    def genus_species_taxids(self, genus_taxid):
-        """NEW in v2. All species-rank taxids in the subtree rooted at
-        genus_taxid -- a BFS/DFS over the children map, so it only visits
-        this genus's own descendants (tens of nodes for Oryza), not the
-        whole taxonomy dump (millions of nodes)."""
-        if genus_taxid not in self.parent:
-            return set()
-        seen = set()
-        stack = [genus_taxid]
-        species = set()
-        while stack:
-            cur = stack.pop()
-            if cur in seen:
-                continue
-            seen.add(cur)
-            if self.rank.get(cur) == "species":
-                species.add(cur)
-            stack.extend(self.children.get(cur, ()))
-        return species
 
 
 def load_acc2taxid(path):
@@ -257,7 +189,7 @@ def build_refid2species(bam, acc2taxid, tax):
 
 
 # ===========================================================================
-# Per-alignment metrics (unchanged from v1 -- see module docstring for why)
+# Per-alignment metrics
 # ===========================================================================
 def alignment_metrics(aln, window):
     """-> (NM, substitution_count_or_None, terminal_damage_count, AS)"""
@@ -312,16 +244,6 @@ def rank_key(rec):
     adj_nm, nm, sub, as_score, ref_name = rec
     sub_key = sub if sub is not None else nm  # unknown subs: don't let it look artificially good
     return (adj_nm, nm, sub_key, -as_score, ref_name)
-
-
-def raw_nm_tag(aln):
-    """NEW in v2 -- cheap tag-only NM lookup for the optional quality pre-gate,
-    deliberately not routed through alignment_metrics() (no MD/CIGAR parsing
-    needed just to find the single best raw NM across all of a read's hits)."""
-    try:
-        return aln.get_tag("NM")
-    except KeyError:
-        return 0
 
 
 # ===========================================================================
@@ -393,31 +315,11 @@ def main():
     ap.add_argument("--acc2taxid", required=True)
     ap.add_argument("--nodes", required=True)
     ap.add_argument("--names", required=True)
-    ap.add_argument("--oryza-taxids", nargs="+", default=None,
-                    help="Explicit whitelist override. If given, used verbatim "
-                         "instead of genus-wide auto-resolution -- pass "
-                         "'4529 4530 4536' to reproduce v1's rufipogon/sativa/"
-                         "nivara-only behavior. Omit (default) for genus-wide.")
-    ap.add_argument("--oryza-genus-taxid", default="4527",
-                    help="Used only when --oryza-taxids is not given: every "
-                         "species-rank descendant of this taxid in nodes.dmp "
-                         "becomes the Oryza whitelist. Default 4527 = genus "
-                         "Oryza (all ~18+ species, not just the 3 focal "
-                         "ones -- see module docstring).")
+    ap.add_argument("--oryza-taxids", nargs="+", default=["4529", "4530", "4536"],
+                    help="default: O. rufipogon, O. sativa, O. nivara")
     ap.add_argument("--damage-window", type=int, default=5)
     ap.add_argument("--top-n", type=int, default=10,
                     help="non-Oryza species kept in the audit table per read")
-    ap.add_argument("--min-best-similarity", type=float, default=None,
-                    help="Optional pre-gate, OFF BY DEFAULT: reject a read "
-                         "outright (before any per-species classification) if "
-                         "its single best raw-NM hit across ALL species fails "
-                         "this AND (if --max-best-raw-nm is also given) that "
-                         "threshold too -- i.e. OR-gated, pass if either "
-                         "condition holds. Borrowed idea from a labmate's "
-                         "classifier's --target-min-sim; unvalidated against "
-                         "our data, see docs/ORYZA_BESTHIT_HANDOFF.md.")
-    ap.add_argument("--max-best-raw-nm", type=int, default=None,
-                    help="See --min-best-similarity.")
     ap.add_argument("--outdir", required=True)
     ap.add_argument("--threads", type=int, default=2, help="BAM/FASTQ IO threads")
     ap.add_argument("--limit-reads", type=int, default=None,
@@ -433,41 +335,10 @@ def main():
 
     tax = Taxonomy(args.nodes, args.names)
     acc2taxid = load_acc2taxid(args.acc2taxid)
-
-    if args.oryza_taxids:
-        for t in args.oryza_taxids:
-            if t not in tax.parent:
-                sys.exit(f"[error] --oryza-taxids {t} not found in nodes.dmp")
-        oryza_set = set(args.oryza_taxids)
-        print(f"[config] Oryza scope: manual override, {len(oryza_set)} taxid(s): "
-              + ", ".join(f"{t}({tax.sci_name(t)})" for t in sorted(oryza_set)),
-              file=sys.stderr)
-    else:
-        if args.oryza_genus_taxid not in tax.parent:
-            sys.exit(f"[error] --oryza-genus-taxid {args.oryza_genus_taxid} "
-                     f"not found in nodes.dmp")
-        genus_rank = tax.rank.get(args.oryza_genus_taxid)
-        if genus_rank != "genus":
-            print(f"[warn] taxid {args.oryza_genus_taxid} has rank "
-                  f"'{genus_rank}', not 'genus' -- proceeding anyway, but "
-                  f"double check this is the taxid you meant", file=sys.stderr)
-        oryza_set = tax.genus_species_taxids(args.oryza_genus_taxid)
-        if not oryza_set:
-            sys.exit(f"[error] no species-rank descendants found under taxid "
-                     f"{args.oryza_genus_taxid} in nodes.dmp -- check the "
-                     f"taxid or pass --oryza-taxids explicitly")
-        print(f"[config] Oryza scope: whole genus (taxid {args.oryza_genus_taxid}, "
-              f"{tax.sci_name(args.oryza_genus_taxid)}), {len(oryza_set)} species "
-              f"resolved: "
-              + ", ".join(f"{t}({tax.sci_name(t)})" for t in sorted(oryza_set)),
-              file=sys.stderr)
-
-    quality_gate_enabled = (args.min_best_similarity is not None or
-                            args.max_best_raw_nm is not None)
-    if quality_gate_enabled:
-        print(f"[config] quality pre-gate ON: min_best_similarity="
-              f"{args.min_best_similarity} max_best_raw_nm={args.max_best_raw_nm} "
-              f"(OR-gated if both given)", file=sys.stderr)
+    for t in args.oryza_taxids:
+        if t not in tax.parent:
+            sys.exit(f"[error] --oryza-taxids {t} not found in nodes.dmp")
+    oryza_set = set(args.oryza_taxids)
 
     bam = pysam.AlignmentFile(args.bam, "rb", threads=max(1, args.threads))
     hd = bam.header.to_dict().get("HD", {})
@@ -497,31 +368,14 @@ def main():
     n_kept = 0
     n_rejected_nonoryza_better = 0
     n_rejected_no_oryza = 0
-    n_rejected_low_quality = 0
     n_missing_md_or_seq = 0
 
     def flush_read(qname, qlen, alns):
         """alns: list of pysam.AlignedSegment for this one read."""
         nonlocal n_reads_with_alignment, n_unclassified_in_bam, n_kept
         nonlocal n_rejected_nonoryza_better, n_rejected_no_oryza, n_missing_md_or_seq
-        nonlocal n_rejected_low_quality
 
         n_reads_with_alignment += 1
-
-        if quality_gate_enabled:
-            best_raw_nm = min(raw_nm_tag(a) for a in alns)
-            best_sim = (100.0 * (qlen - best_raw_nm) / qlen) if qlen > 0 else 0.0
-            checks = []
-            if args.min_best_similarity is not None:
-                checks.append(best_sim >= args.min_best_similarity)
-            if args.max_best_raw_nm is not None:
-                checks.append(best_raw_nm <= args.max_best_raw_nm)
-            if not any(checks):
-                n_rejected_low_quality += 1
-                dec_fh.write(f"{qname}\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\t"
-                            f"REJECT\tlow_quality_pregate\n")
-                return
-
         best_by_species = {}   # species_taxid -> (rank_key_tuple, ref_name, NM, sub, dmg, adj, AS)
         for aln in alns:
             sp = refid2species[aln.reference_id]
@@ -646,8 +500,7 @@ def main():
         input_reads = count_fastq_reads(args.fastq)
     unclassified_reads = n_unclassified_in_bam + (input_reads - n_reads_with_alignment)
 
-    check_sum = (n_kept + n_rejected_nonoryza_better + n_rejected_no_oryza +
-                n_rejected_low_quality + unclassified_reads)
+    check_sum = n_kept + n_rejected_nonoryza_better + n_rejected_no_oryza + unclassified_reads
     consistent = (check_sum == input_reads) and (n_fastq_out == n_kept)
 
     # Written even on a failed consistency check, so the numbers are there to
@@ -657,11 +510,11 @@ def main():
     with open(summary_tmp, "w") as fh:
         fh.write("sample\tinput_reads\treads_with_alignment\treads_with_oryza_hit\t"
                 "kept_reads\trejected_nonoryza_better\trejected_no_oryza\t"
-                "rejected_low_quality\tunclassified_reads\n")
+                "unclassified_reads\n")
         fh.write(f"{args.sample}\t{input_reads}\t{n_reads_with_alignment}\t"
                 f"{n_kept + n_rejected_nonoryza_better}\t{n_kept}\t"
                 f"{n_rejected_nonoryza_better}\t{n_rejected_no_oryza}\t"
-                f"{n_rejected_low_quality}\t{unclassified_reads}\n")
+                f"{unclassified_reads}\n")
     os.rename(summary_tmp, summary_path)
 
     print(f"[summary] {args.sample}: input={input_reads} "
@@ -669,14 +522,12 @@ def main():
           f"oryza_hit={n_kept + n_rejected_nonoryza_better} kept={n_kept} "
           f"rejected_nonoryza_better={n_rejected_nonoryza_better} "
           f"rejected_no_oryza={n_rejected_no_oryza} "
-          f"rejected_low_quality={n_rejected_low_quality} "
           f"unclassified={unclassified_reads}", file=sys.stderr)
 
     if not consistent:
         msg = (f"[check] input_reads={input_reads} != kept({n_kept}) + "
               f"rejected_nonoryza_better({n_rejected_nonoryza_better}) + "
               f"rejected_no_oryza({n_rejected_no_oryza}) + "
-              f"rejected_low_quality({n_rejected_low_quality}) + "
               f"unclassified({unclassified_reads}) = {check_sum}; "
               f"fastq_out={n_fastq_out} vs kept={n_kept}")
         if smoke:

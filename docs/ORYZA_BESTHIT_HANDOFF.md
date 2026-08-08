@@ -1,10 +1,15 @@
 
 # Oryza competitive mapping / best-hit 接手说明
 
-更新时间：2026-08-08（**第六次更新（当晚收工前）：服务器真实dry-run已跑
-过，结果符合预期方向，但脚本又发现并修复了一个新问题（irgsp.acc2taxid有
-表头行，会污染合并文件），--apply还没跑，是明天开工第一件事，详见0.6
-节**。第五次更新：用户截图确认`asian_rice_panel.acc2taxid`是**整份文件**
+更新时间：2026-08-08（**第七次更新：besthit主脚本v2重写完成——Oryza范围
+从硬编码3个种(rufipogon/sativa/nivara)改成动态解析整个Oryza属，取代
+`--oryza-taxids`默认值；v1脚本已归档为`oryza_besthit_damage_filter_v1.py`
+（`git mv`保留历史）。本地合成数据验证通过，但没有服务器真实BAM/真实数据
+的验证，详见新增的5.1b节，含"综合师兄脚本能不能采纳"的逐条取舍表**。第六
+次更新（当晚收工前）：服务器真实dry-run已跑过，结果符合预期方向，但脚本
+又发现并修复了一个新问题（irgsp.acc2taxid有表头行，会污染合并文件），
+--apply还没跑，是明天开工第一件事，详见0.6节。第五次更新：用户截图确认
+`asian_rice_panel.acc2taxid`是**整份文件**
 4529/4530系统性反标——不是"np7等12个基因组各自标错"，而是"凡标4529的都
 应为4530、凡标4530的都应为4529"，全文件二元互换。修正脚本已从"按基因组
 名字分别赋值"改成"整列做4529↔4530互换"，逻辑更简单也更可靠（不依赖基因组
@@ -374,14 +379,110 @@ Oryza 最优 hit 必须与非 Oryza 最优 hit 打平或更好，才 KEEP**。
 另外还有我们没有的质量预筛`--target-min-sim 95.0`/`--target-max-nm 2`）+
 下游`select_oryza_competitive_reads.py`（从上一步的top10表里做真正的KEEP
 筛选，`.smk`里配置`MAX_DIFFERENCE=0`，只认sativa/rufipogon两个种，
-**不含nivara**，比我们当前`--oryza-taxids`默认的3个种少一个）。他的
+**不含nivara**，比我们当时`--oryza-taxids`默认的3个种少一个）。他的
 competitive mapping数据库组成从给到的两个文件里**无法确认**（目录命名
 线索是"rice_panel"+"k100_N1"的bowtie2风格参数，看起来跟我们用WGS+亚洲
-panel的思路接近，但没有直接证据）。**这个对比目前只在对话里讨论过，细节
-未经进一步确认（尤其是他的数据库组成、`select_oryza_competitive_reads.py`
-的完整逻辑），暂不作为本项目的行动依据，仅供参考——如果之后要采纳他的
-某个做法（比如收紧质量预筛，或者确认要不要跟他对齐只用sativa/rufipogon
-两种），需要先跟他本人确认数据库和脚本细节。**
+panel的思路接近，但没有直接证据）。这个对比当时只在对话里讨论过，没有
+写进代码——下面5.1b节是根据这个对比做的实际重写。
+
+### 5.1b ⚠️2026-08-08 v2重写：Oryza范围改成全genus，取代3-species白名单
+
+**用户明确要求（原话）**："不要像师兄那个只看sativa和rufipogon，我们的是
+里面oryza genus的全部species全部留下来比较看就可以"——这是v2唯一的硬性
+需求，其余"综合师兄脚本能调整什么"由我判断取舍，取舍理由都写在下面。
+
+**核心改动**：`--oryza-taxids`不再默认硬编码`"4529 4530 4536"`(rufipogon/
+sativa/nivara 3个种)，改为默认**动态解析整个Oryza属**——启动时从
+`nodes.dmp`里找到taxid 4527(Oryza属)下面**全部rank=species的后代**(新增
+`Taxonomy.genus_species_taxids()`，用children_map做BFS，只遍历Oryza属自己
+的子树，不用扫全部taxonomy)，这个集合就是新的白名单。`--oryza-taxids`
+仍然保留，作为**手动override**——显式传参数时完全按v1那样只用给定的taxid，
+不做全genus解析，用来复现v1的窄范围行为。
+
+**为什么这个改动本身就是在修一个真实的误判风险，不只是"更全面"**：旧版
+`--oryza-taxids`默认只有3个种，其余~15个Oryza属物种(比如数据库里contig数
+不少的*O. longistaminata* 905条、*O. coarctata* 450条，见6.1节)**不在白
+名单里**——这意味着一条read如果真的是*O. longistaminata*，但数据库里同时
+也命中了某个真正的非Oryza物种，这条read会被当成"非Oryza竞争者"去跟
+sativa/rufipogon/nivara的最优hit比，如果sativa/rufipogon/nivara都没命中
+（这条read其实压根不是这3个种），就会直接落进`best_oryza is None`分支，
+判定`REJECT/no_oryza_hit`——**一条真正的Oryza属read被当成"没有Oryza命中"
+拒绝掉了**。这不是理论担忧，本地用合成数据复现过这个场景（见下方"本地
+验证"），v1语义下确实会把longistaminata-only的read错误REJECT。genus-wide
+之后，`best_oryza`池子覆盖整个属，这类read会被正确识别为Oryza并纳入
+adjusted_NM比较。
+
+**综合师兄脚本，还考虑过什么，取舍理由**：
+
+| 想法来源 | 采纳/不采纳 | 理由 |
+|---|---|---|
+| genus-wide范围（用户明确要求） | ✅采纳，核心改动 | 见上 |
+| MD tag字符串直接解析(不用`pysam.get_aligned_pairs(with_seq=True)`) | ❌**不采纳**（本次） | 师兄这套快速实现有一个连带的"只对每个species的raw-NM最小值那几条alignment做MD解析"的剪枝——这个剪枝假设raw NM排序等于damage校正后的adjusted NM排序，**这个假设不总成立**：一条raw NM更高的alignment，如果它的额外错配恰好落在末端损伤窗口内，扣除损伤后反而可能比raw NM更低的alignment adjusted_NM更小。我们的`--damage-window`默认5bp/端(最多10个信用)，比师兄的1bp/端(最多2个信用)宽得多，这个"raw NM差距被损伤信用反超"的风险对我们更大。为避免在没有服务器真实数据比对验证的情况下引入静默的准确性回归，`alignment_metrics()`保持v1原样(对每条alignment都完整计算，不做raw-NM预剪枝)。如果以后单样本运行时间真的成为瓶颈，值得重新评估，但要先跟v1的输出做过并排验证 |
+| `--damage-end-bases`默认1bp | ❌不采纳 | 用户没要求改，我们的5bp已经过4样本留存率验证("5bp暂时可用"，见7.5节)，不是这次改动范围 |
+| `--target-min-sim`/`--target-max-nm`质量预筛 | ⚠️采纳但**默认关闭** | 新增`--min-best-similarity`/`--max-best-raw-nm`两个可选参数(OR逻辑，任一达标就放行，跟师兄脚本一致)，在per-species分类之前先看这条read全局最优raw-NM是否够格。默认不传(两者都是`None`)时完全不生效，不影响已验证的行为；想尝试的话可以显式加上，但目前对我们数据没有验证过阈值该设多少 |
+| `select_oryza_competitive_reads.py`的`MAX_DIFFERENCE=0`(只认打平) | ❌不采纳 | 我们的判定本来就是`adjusted_NM(oryza) <= adjusted_NM(nonoryza)`，等价于打平或更好，逻辑已经一致，不需要额外参数 |
+| 完整ngsLCA式全谱系归类(assign到最深胜出节点) | ❌不采纳 | 我们是"Oryza vs 非Oryza"这个具体的二元竞争需求(见5.1节用户原话)，不是通用谱系分类问题，不适合套用 |
+| multiprocessing worker pool加速 | ⏸️推迟，未实现 | 有价值但改动面大、这次没有服务器条件实测验证，先不引入，记在这里供以后需要提速时参考 |
+
+**已从仓库归档**：`scripts/oryza_besthit/oryza_besthit_damage_filter_v1.py`
+——`git mv`保留完整历史，不是删除。`submit_oryza_besthit.sh`同步更新：
+`ORYZA_TAXIDS`环境变量默认改成空字符串(触发genus-wide)，新增
+`ORYZA_GENUS_TAXID`(默认`4527`)、`MIN_BEST_SIMILARITY`/`MAX_BEST_RAW_NM`
+(默认都为空=关闭)。
+
+**输出格式变化**：`summary.tsv`新增一列`rejected_low_quality`(质量预筛
+关闭时恒为0)。⚠️**这意味着v1和v2产出的`summary.tsv`列数不一样**——已经
+用v1跑完的4个样本(LV6000619499/619917/620016/620032)的`summary.tsv`是
+8列(无`rejected_low_quality`)，v2产出的是9列。`submit_oryza_besthit.sh
+merge`直接`head+tail`拼接多个样本的`summary.tsv`，**不要把v1和v2的
+summary.tsv混在一起跑merge**，会列错位。
+
+**本地验证**（本机Mac，无服务器数据/无真实BAM时做的，隔离venv装pysam
+0.24.0）：手工构造了一个最小合成taxonomy(genus Oryza=4527，4个种：
+rufipogon/sativa/nivara/longistaminata，加一个非Oryza外群物种)+对应BAM，
+3条测试read，重点验证：
+- **genus-wide默认模式**：一条只命中`longistaminata`(不在v1白名单里)和
+  外群物种的read，`longistaminata`adjusted_NM更优——v2正确判定
+  `KEEP/oryza_at_least_as_good`，`best_oryza`正确解析成
+  `Oryza longistaminata`(taxid 4528)。启动日志正确打印出解析到的4个属
+  内物种。
+- **`--oryza-taxids`手动override**：显式传`4529 4530 4536`时，同一条
+  longistaminata-only read被判`REJECT/no_oryza_hit`，且
+  `best_nonoryza`栏位显示的正是`Oryza longistaminata`——**这正是上面
+  描述的误判风险的实际复现**，证明override确实完整复现了v1语义，也
+  证明了genus-wide改动解决的是一个真实存在、可复现的问题，不只是
+  理论上更完备。
+- sativa-vs-外群的baseline read在两种模式下都正确`KEEP`，行为不受影响。
+- 质量预筛(`--min-best-similarity 99`)开启时，3条测试read(相似度都在
+  93-97%之间)全部被正确判`REJECT/low_quality_pregate`，一致性校验
+  (`input_reads == kept + rejected_nonoryza_better + rejected_no_oryza +
+  rejected_low_quality + unclassified_reads`)照常通过。
+- **没有验证过的地方**：这一切都是合成数据，没有在真实BAM(131个数据库
+  的competitive mapping产出)上跑过，也没有拿v1已经产出的4个样本真实结果
+  跟v2重跑做过并排对比。genus-wide范围扩大后，实际retention rate(留存率)
+  大概率会变化(至少一部分之前被错误REJECT的genus-内非focal-3-species
+  read现在会被KEEP)，具体变化多少不知道。
+
+**待办（下一个session）**：
+1. 下载新版本三个脚本(见下方下载命令)，先跑`check`确认环境正常
+2. 建议先对已经跑过v1的4个样本之一做`smoke`(1000-read子集)，对比v2和
+   v1的KEEP/REJECT分布差异，确认genus-wide改动的实际影响幅度符合预期
+   (不应该暴增，因为smoke test的分析显示"惜败"read的头号竞争对手基本都是
+   跟Oryza毫不相关的物种，genus内其他种在top20里几乎没出现过，见6节)
+3. 确认没问题后，可以考虑重新跑一遍这4个已完成的样本(删除`.finished`
+   标记后重跑，或者直接跑到新的`OUT_DIR`保留两份对比)，让"5bp可用"这类
+   已有结论建立在v2的口径上，避免v1/v2结果混用造成解读混乱
+4. 剩余样本直接用v2跑(`submit all`/`local all`默认行为已经是genus-wide)
+
+**下载命令**：
+```bash
+cd /home/scratch/yinmt202607/gene/scripts
+curl -fsSL -O https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/oryza-competitive-mapping/scripts/oryza_besthit/oryza_besthit_damage_filter.py
+curl -fsSL -O https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/oryza-competitive-mapping/scripts/oryza_besthit/oryza_besthit_damage_filter_v1.py
+curl -fsSL -O https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/oryza-competitive-mapping/scripts/oryza_besthit/submit_oryza_besthit.sh
+chmod +x submit_oryza_besthit.sh
+bash submit_oryza_besthit.sh check
+```
 
 ### 5.2 核心算法
 
@@ -860,6 +961,13 @@ DTH8/Ghd8经典大片段缺失（3024份现代品种里5.4%携带这个缺失，
    覆盖度QC是个独立、低成本、能快速出结论的子任务，可以和上面几条并行推进；
    8.2依赖更完整的genotype pipeline，且同样会受损伤/参考质量问题影响，
    优先级排在0.5/7.5之后。
-8. 【新增，非阻塞】5.1末尾记录的师兄脚本对比，如果要更严谨地对齐/参考他
-   的做法（质量预筛、是否收窄到只用sativa/rufipogon两种、他的数据库组成），
-   需要先跟他本人确认细节，目前只是文档记录，不是待执行的行动项。
+8. 【已完成，见5.1b】5.1末尾记录的师兄脚本对比已经落地成v2重写（genus-wide
+   Oryza范围+可选质量预筛），逐条取舍理由见5.1b节的表格。质量预筛的具体
+   阈值(`--min-best-similarity`/`--max-best-raw-nm`)如果想启用，仍然需要
+   在我们数据上摸索合适的值，目前默认关闭。
+9. 【当前新增，优先级紧随0.5/0.6之后】5.1b节：v2版besthit主脚本
+   （genus-wide Oryza范围）只在本地合成数据上验证过，**没有跑过真实BAM**。
+   下载新脚本后先`smoke`一个已有样本，对比v2和v1的KEEP/REJECT分布差异
+   是否符合预期（不应该暴增——smoke test数据显示"惜败"read的头号竞争者
+   基本都是跟Oryza无关的物种，见6节），确认没问题后再考虑要不要重新跑
+   已完成的4个样本（v1/v2的`summary.tsv`列数不同，不要混着`merge`）。

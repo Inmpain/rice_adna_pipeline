@@ -40,9 +40,20 @@ ACC2TAXID="${ACC2TAXID:-/home/scratch/yinmt202607/db/asian_rice_panel_index/all_
 NODES="${NODES:-/home/database/ref20250728/taxonomy_CPH/ncbi/20250530/nodes.dmp}"
 NAMES="${NAMES:-/home/database/ref20250728/taxonomy_CPH/ncbi/20250530/names.dmp}"
 
-ORYZA_TAXIDS="${ORYZA_TAXIDS:-4529 4530 4536}"
+# v2 (2026-08-08): Oryza scope defaults to the WHOLE genus now, not a
+# hardcoded 3-species list -- see oryza_besthit_damage_filter.py's module
+# docstring and docs/ORYZA_BESTHIT_HANDOFF.md section 5.1b. Leave
+# ORYZA_TAXIDS empty (the default) for genus-wide auto-resolution driven by
+# ORYZA_GENUS_TAXID; set ORYZA_TAXIDS explicitly (e.g. "4529 4530 4536") to
+# reproduce v1's narrower rufipogon/sativa/nivara-only behavior instead.
+ORYZA_TAXIDS="${ORYZA_TAXIDS:-}"
+ORYZA_GENUS_TAXID="${ORYZA_GENUS_TAXID:-4527}"
 DAMAGE_WINDOW="${DAMAGE_WINDOW:-5}"
 TOP_N="${TOP_N:-10}"
+# Optional pre-gate, off by default (both empty) -- see --min-best-similarity/
+# --max-best-raw-nm in the python script's --help.
+MIN_BEST_SIMILARITY="${MIN_BEST_SIMILARITY:-}"
+MAX_BEST_RAW_NM="${MAX_BEST_RAW_NM:-}"
 
 OUT_DIR="${OUT_DIR:-/home/scratch/yinmt202607/gene/results/oryza_competitive_mapping/besthit}"
 LOG_DIR="${OUT_DIR}/logs"
@@ -181,7 +192,15 @@ run_check() {
     echo "[check] ACC2TAXID=$ACC2TAXID"
     echo "[check] NODES=$NODES"
     echo "[check] NAMES=$NAMES"
-    echo "[check] ORYZA_TAXIDS=$ORYZA_TAXIDS DAMAGE_WINDOW=$DAMAGE_WINDOW TOP_N=$TOP_N"
+    if [[ -n "$ORYZA_TAXIDS" ]]; then
+        echo "[check] Oryza scope: manual override ORYZA_TAXIDS=$ORYZA_TAXIDS"
+    else
+        echo "[check] Oryza scope: whole genus, ORYZA_GENUS_TAXID=$ORYZA_GENUS_TAXID"
+    fi
+    echo "[check] DAMAGE_WINDOW=$DAMAGE_WINDOW TOP_N=$TOP_N"
+    if [[ -n "$MIN_BEST_SIMILARITY" || -n "$MAX_BEST_RAW_NM" ]]; then
+        echo "[check] quality pre-gate ON: MIN_BEST_SIMILARITY=$MIN_BEST_SIMILARITY MAX_BEST_RAW_NM=$MAX_BEST_RAW_NM"
+    fi
     echo "[check] partition=$SLURM_PARTITION account=${SLURM_ACCOUNT:-<default>}"
 
     [[ -f "$ACC2TAXID" ]] || { echo "ERROR: ACC2TAXID missing: $ACC2TAXID" >&2; exit 1; }
@@ -227,7 +246,22 @@ run_worker() {
     echo "[run] fastq=$fastq"
     echo "[run] outdir=$outdir"
 
-    # shellcheck disable=SC2086
+    # v2: pass an explicit whitelist only if ORYZA_TAXIDS is set; otherwise
+    # let the python script auto-resolve the whole genus via
+    # --oryza-genus-taxid (its default, 4527, is already genus Oryza -- we
+    # still pass ORYZA_GENUS_TAXID explicitly so a non-default env var value
+    # actually takes effect).
+    local oryza_args=()
+    if [[ -n "$ORYZA_TAXIDS" ]]; then
+        # shellcheck disable=SC2206
+        oryza_args=(--oryza-taxids $ORYZA_TAXIDS)
+    else
+        oryza_args=(--oryza-genus-taxid "$ORYZA_GENUS_TAXID")
+    fi
+    local gate_args=()
+    [[ -n "$MIN_BEST_SIMILARITY" ]] && gate_args+=(--min-best-similarity "$MIN_BEST_SIMILARITY")
+    [[ -n "$MAX_BEST_RAW_NM" ]] && gate_args+=(--max-best-raw-nm "$MAX_BEST_RAW_NM")
+
     python3 "$PY_SCRIPT" \
         --sample "$sample" \
         --bam "$bam" \
@@ -235,9 +269,10 @@ run_worker() {
         --acc2taxid "$ACC2TAXID" \
         --nodes "$NODES" \
         --names "$NAMES" \
-        --oryza-taxids $ORYZA_TAXIDS \
+        "${oryza_args[@]}" \
         --damage-window "$DAMAGE_WINDOW" \
         --top-n "$TOP_N" \
+        "${gate_args[@]}" \
         --outdir "$outdir" \
         --threads "$JOB_CPUS" \
         "$@"
