@@ -9,106 +9,44 @@
 
 ## 0. 现状一句话总结
 
-两个参考 panel 已经到位(见第1节实际路径)。坐标系核对已完成(见3.1)：染色体
-命名一致、REF/ALT方向虽相反但mergeit可自动处理。convertf 这步(29M_3k
-PLINK→EIGENSTRAT)已在服务器上验证跑通(2026-08-07，见3.2节step 2)：
-29,635,224个SNP、3024个样本转换前后完全一致，无丢失。**⚠️2026-08-07重大
-更正**：`asn720data`此前被判定"密度太低、直接弃用、不用查跟6.7M_720的关系"
-——这个判断错了。`asn720data/asn720.pop.fam`的**FID列(第一列)是真实的群体
-标签(`OrA`/`OrB`/`OrC`/`OrD`/`OrE`/`OrF`...)**，键在跟`asn720.6m.ind`同一套
-`ERR0685xx`风格样本ID上——而`asn720.6m.ind`目前把这批样本的群体标签记成
-笼统的`control`。这很可能就是第3.2节第3条一直找不到的旱稻/水稻标签来源，
-比指望SNP-Seek或翻论文补充材料直接得多。详见1.2/3.2。
+**⚠️2026-08-08深夜重大方向调整：放弃合并两个panel，改为两个独立PCA**。
+`29M_3k`与`6.7M_720`求交集这条路线走到底了——先是mergeit按SNP ID字符串
+匹配、两边ID命名方式不同(`1026` vs `1np1409`)导致0匹配（见下方历史记录），
+用ID统一重命名的方式修复后重新跑，交集数量**依然太少**（chr1单条染色体
+两边分别305万/78万个位点，真实重叠才132个，全基因组交集大概率只有一两千
+的量级）——这个密度对"每个古代样本还要再对着这份交集去找自己reads覆盖到
+的位点"这一步来说完全不够用，古代样本reads本来就稀疏，一两千个位点里能
+抽到的更是所剩无几。**决定：不再合并，`29M_3k`和`6.7M_720`各自独立做一次
+smartpca**，古代样本分别投影到"栽培稻多样性"和"野生稻多样性"两个坐标空间
+里，分别回答"更接近哪个栽培亚群"和"更接近哪个野生谱系"，不强求画在同一张
+图上。详见第2节新设计。
 
-**⚠️2026-08-08晚间更新（mergeit已完成，但交集为0，找到了很可能的原因）**：
-`par.MERGE`已在服务器上跑完（`##end of mergeit: 7329.262 seconds cpu
-46421.983 Mbytes in use`），但输出的`Histogram of checkmatch return codes`
-显示`total: 0`——**两个panel之间一个SNP都没匹配上**，`db/merged_29M3k_6M7_720/`
-下产出的`merged.{geno,snp,ind}`预期是空的或接近空的（还没让用户贴
-`wc -l`确认，见待办）。
+好处：convertf那步(29M_3k PLINK→EIGENSTRAT，4.4小时CPU)完全没有浪费——
+转换好的`NB_final_snp.eigenstratgeno/.snp/.ind`正好就是独立PCA-A需要的
+完整输入；`6.7M_720`本来就是EIGENSTRAT格式，也是现成的。不用再纠结
+mergeit的ID匹配、strand-ambiguous剔除这些坑。标签来源也顺带简化：
+`29M_3k`这边不用再等`OrA-OrF`，3K RGP官方品种元数据
+(`docs/references/3k_rice_genomes_project/rice_line_metadata_20141029.xlsx`，
+main分支`docs/LITERATURE.md`第3节)自带IND/AUS/ARO/TRJ/TEJ/ADM标准亚群
+标签，直接能用；`OrA-OrF`这条线只需要给`6.7M_720`野生稻panel那边用。
 
-**很可能的原因（未100%确认，见下面的验证步骤）**：`mergeit`按**SNP ID
-字符串**匹配两个数据集里的"同一个SNP"，不是按染色体+物理位置。而这两个
-panel的SNP ID命名方式完全不同：
-- `29M_3k`(convertf转换后的`NB_final_snp.snp`)：ID是**纯数字、就是物理
-  位置本身**，例如`1026`、`1033`、`1047`（跟第4列物理位置完全相同的数字，
-  没有染色体前缀）——这也解释了convertf那次"`first snp 1026 is number`"
-  提示的来源
-- `6.7M_720`(`asn720.6m.snp`)：ID是`{染色体}np{物理位置}`格式，例如
-  `1np1409`、`1np1422`
-
-`"1026"`和`"1np1026"`作为字符串永远不可能相等，所以哪怕两个panel在同一条
-染色体同一个物理位置真的都有SNP（大概率是有的——两边分别抽查了chr1的位点
-数：29M有3,057,565个、720有775,775个，量级上完全应该有交集），mergeit按
-ID字符串比对时也会判定"没有共同SNP"，跟convertf那次"文件名后缀识别"是
-同一类"工具的默认假设跟我们数据的实际格式不匹配"的坑。
-
-**这个诊断还没有100%坐实**，下一个session接手时应该先做两件事，而不是
-直接冲去改ID重跑（可能要跑很久，蒙对了省时间，蒙错了浪费几个小时）：
-1. **要用户贴mergeit的完整log（不只是尾巴），而不是只看`##end of mergeit`
-   这几行**——看有没有更具体的"未匹配原因"提示，或者mergeit是不是其实
-   有一个按位置匹配的开关/参数被漏掉了
-2. 确认`merged.{geno,snp,ind}`到底是空文件还是有内容但行数为0/接近0
-
-**用户已经看过真实数据、确认这个诊断合理，当晚就直接试了**（不等下一个
-session）——**注意要同时修正两个文件的ID，不能只改720**：`29M_3k`的ID是
-纯数字物理位置、没有染色体前缀，如果只改720那边，`29M_3k`自己内部chr1的
-`1026`和chr2的`1026`会是同一个ID字符串，存在跨染色体撞ID的风险
-（`run_convert_merge.sh`脚本注释里写的"mergeit按染色体+物理位置匹配"这句
-话本身站不住脚——`total: 0`这个实测结果就是反例，实际应该是按SNP名字
-匹配，脚本注释是没验证过的假设，写错了）。
-
-**完整命令**（不改`.geno`/`.ind`和原始`.snp`，只生成ID统一为
-`{染色体}_{物理位置}`格式的副本，输出到全新目录，不覆盖上次的
-`merged_29M3k_6M7_720/`）：
-```bash
-cd /home/scratch/yinmt202607/db
-
-# 1) 生成ID统一的.snp副本(行数/行序不变，只重写第1列)
-awk 'BEGIN{OFS="\t"} {$1=$2"_"$4; print}' 29M_3k/NB_final_snp.snp \
-  > 29M_3k/NB_final_snp.idfix.snp
-awk 'BEGIN{OFS="\t"} {$1=$2"_"$4; print}' 6.7M_720/asn720.6m.snp \
-  > 6.7M_720/asn720.6m.idfix.snp
-
-# 行数必须跟原文件完全一致，否则说明awk哪里出错了，不要往下继续
-wc -l 29M_3k/NB_final_snp.snp 29M_3k/NB_final_snp.idfix.snp
-wc -l 6.7M_720/asn720.6m.snp 6.7M_720/asn720.6m.idfix.snp
-
-mkdir -p /home/scratch/yinmt202607/db/merged_29M3k_6M7_720_idfix
-```
-```bash
-# 2) 复制一份par.MERGE，只改snp1/snp2/输出路径三处，geno1/ind1/geno2/ind2不动
-#    (在par.MERGE本来所在的目录下执行)
-cp par.MERGE par.MERGE.idfix
-sed -i \
-  -e 's#^snp1:.*#snp1:  /home/scratch/yinmt202607/db/29M_3k/NB_final_snp.idfix.snp#' \
-  -e 's#^snp2:.*#snp2:  /home/scratch/yinmt202607/db/6.7M_720/asn720.6m.idfix.snp#' \
-  -e 's#^genooutfilename:.*#genooutfilename: /home/scratch/yinmt202607/db/merged_29M3k_6M7_720_idfix/merged.geno#' \
-  -e 's#^snpoutfilename:.*#snpoutfilename:  /home/scratch/yinmt202607/db/merged_29M3k_6M7_720_idfix/merged.snp#' \
-  -e 's#^indoutfilename:.*#indoutfilename:  /home/scratch/yinmt202607/db/merged_29M3k_6M7_720_idfix/merged.ind#' \
-  par.MERGE.idfix
-cat par.MERGE.idfix   # 跑之前肉眼确认改对了
-```
-```bash
-# 3) 后台跑(上次mergeit跑了约2小时，不用一直守着)
-nohup mergeit -p par.MERGE.idfix > mergeit_idfix.log 2>&1 &
-disown
-```
-
-**验证方式**：`tail -100 mergeit_idfix.log`，重点看`Histogram of checkmatch
-return codes`那一行——如果这次不是`total: 0`而是一个大数字，说明诊断
-正确、修复生效，再核对`merged_29M3k_6M7_720_idfix/merged.snp`的行数是否
-落在两个panel交集的合理量级（比chr1单独两边3,057,565和775,775这两个数字
-小的一个量级差不多）。如果这次跑完还是`total: 0`或报错，说明诊断错了，
-需要贴完整log重新排查，不要凭这个假设继续深挖。
-
-当前最优先的事三条并行：①**（今晚新发现，提到最前面）确认mergeit
-0匹配的真实原因、决定要不要用上面的ID重命名方案重跑**；②核实`asn720data`
-标签能覆盖`asn720.6m.ind`里多少样本、读`db/wild_rice_pangenome_README.txt`
-（新发现，内容还没看）搞清楚`OrA-OrF`具体定义；③注意：③号任务在另一个
-会话窗口(疑似Codex CLI)同步推进
-中，该文档`db/wild_rice_pangenome_README.txt`内容那部分是那边在等用户贴，
-不要重复索取。
+**mergeit求交集的调试历史（存档，不再是行动项，仅供以后类似问题参考）**：
+坐标系核对完成(见3.1)：染色体命名一致、REF/ALT方向虽相反但mergeit本可
+自动处理。convertf这步(29M_3k PLINK→EIGENSTRAT)在服务器上验证跑通
+(2026-08-07)：29,635,224个SNP、3024个样本转换前后完全一致，无丢失。
+`asn720data`一度被误判"密度太低、直接弃用"，2026-08-07推翻——它的`.fam`
+FID列(`OrA-OrF`)是野生稻这边真实的群体标签来源。2026-08-08晚间跑
+mergeit，`##end of mergeit`正常结束但`Histogram of checkmatch return codes`
+显示`total: 0`——诊断出两个panel的SNP ID命名方式不同(29M_3k是纯数字物理
+位置如`1026`，720是`{chrom}np{pos}`如`1np1409`)，mergeit按ID字符串匹配、
+两者永远对不上；这个诊断在另一个并行会话窗口(疑似Codex CLI，工作副本在
+本机`/Users/inmpain/Documents/angkor/rice_adna_pipeline_publish`)和本会话
+里被独立验证过两次，用`comm`工具在chr1上实测确认真实物理位置重叠132个
+(而非0)，证实ID格式不同确实是0匹配的原因。用ID统一重命名(`{chrom}_{pos}`)
+的方式修复后重新跑，交集数量出来了但太少，促成了这次放弃合并的决定。
+`scripts/ecotype_pca/par.MERGE`和`run_convert_merge.sh`仍保留在仓库里
+作为这段调试过程的记录，**不再是当前分析路径的一部分**，不要在新设计里
+继续用它们。
 
 ## 1. 数据库
 
@@ -134,6 +72,9 @@ return codes`那一行——如果这次不是`total: 0`而是一个大数字，
     诉求不是"现代群体PCA需要多少独立位点"(这个404k甚至160k就够)，而是
     "古代样本稀疏reads随机覆盖到panel位点的概率"——panel 越密，这个概率
     越高，所以反而应该选最密的可用集合，29mio 是密度和格式兼容性的最优点。
+- **现在直接可用**：`scripts/ecotype_pca/`下convertf已经把这份数据转成
+  EIGENSTRAT格式(`NB_final_snp.eigenstratgeno/.snp/.ind`)，可以直接作为
+  独立PCA-A的输入，不需要再等交集。
 
 ### 1.2 6.7M_720 panel(野生稻为主，已上传)
 
@@ -144,19 +85,20 @@ return codes`那一行——如果这次不是`total: 0`而是一个大数字，
   asn720.6m.ind
   asn720.6m.snp
   ```
-- **格式是EIGENSTRAT**(`.geno/.ind/.snp`三件套)，不是PLINK——这正好是
-  smartpca的原生输入格式，后续两个panel求交集后，最终喂给smartpca的应该
-  统一转成这个格式，而不是PLINK。
+- **格式是EIGENSTRAT**(`.geno/.ind/.snp`三件套)，本来就是smartpca的原生
+  输入格式，可以直接作为独立PCA-B的输入。
 - 内容：720份样本，约670万个SNP位点，以野生稻为主
-- 来源/参考坐标系：**尚未确认是否也是 called vs Nipponbare MSU7/IRGSP1.0**——
-  这是第3节里最优先要查的问题，不确认这一点，后面所有"求交集"的结果都
-  可能是静默错误(代码能跑，位点对不上导致交集集合偏小或为空，但不会报错)。
-- **⚠️`asn720data`不能弃用——它的`.fam`文件是群体标签的关键来源
-  (2026-08-07更正，推翻此前"已决定弃用"的判断)**：
+- 来源/参考坐标系：**尚未最终确认是否也是 called vs Nipponbare
+  MSU7/IRGSP1.0**——但check_ref.py抽查200个位点，91.5%(183/200)的REF/ALT
+  与IRGSP参考序列在对应位置的碱基能对上，间接支持坐标系基本一致（不是
+  完全不同的组装版本），只是不如29M_3k那么干净。既然现在不再需要跟
+  29M_3k求交集，这个问题的紧迫性降低——只影响PCA-B自身smartpca跑出来的
+  可信度，不再是"求交集会不会静默出错"这个问题了。
+- **⚠️`asn720data`是这条线群体标签的关键来源**：
   `asn720data/asn720.pop.{bed,bim,fam}`(720份、94,974个SNP位点)本身的
-  **基因型数据**密度确实太低，不适合拿来做PCA底层数据，这一点原判断没错；
-  但`asn720.pop.fam`的**FID列(第一列)记录着`OrA`/`OrB`/`OrC`/`OrD`/`OrE`/
-  `OrF`这样的群体标签**，例如：
+  **基因型数据**密度太低，不适合拿来做PCA底层数据；但`asn720.pop.fam`的
+  **FID列(第一列)记录着`OrA`/`OrB`/`OrC`/`OrD`/`OrE`/`OrF`这样的群体标签**，
+  例如：
   ```
   OrD    ERR068594    0    0    0    1
   OrD    ERR068597    0    0    0    1
@@ -165,15 +107,9 @@ return codes`那一行——如果这次不是`total: 0`而是一个大数字，
   OrC    ERR068604    0    0    0    1
   ```
   这批`ERR0685xx`风格的样本ID，跟`asn720.6m.ind`里那批被记成笼统`control`
-  标签的样本**是同一套ID体系**(见下面"样本ID观察")。也就是说：即使基因型
-  数据只用`asn720.6m.*`(6.7M位点，密度更高)，**群体标签应该从
+  标签的样本**是同一套ID体系**(见下面"样本ID观察")。**群体标签应该从
   `asn720data/asn720.pop.fam`按样本ID(IID)匹配过去**，而不是用
-  `asn720.6m.ind`自己那个占位符式的`control`。**这批`OrA-OrF`标签，很可能
-  就是第3.2节第3条一直在找的旱稻/水稻(或至少野生稻谱系)标签来源**——
-  且与本工作流之前看到的一张smartpca投影图(图例里正好有`OrA`至`OrF`分类，
-  以及`ADM/ARO/AUS/IND/RAY/TEJ/TRJ`等3K RGP标准亚群编号)用的是同一套
-  `OrA-OrF`编号，强烈暗示两者同源，值得优先核实覆盖率而不是继续等
-  SNP-Seek或啃论文补充材料。
+  `asn720.6m.ind`自己那个占位符式的`control`。
 - **样本ID观察**：`asn720.6m.ind`里样本ID是两种风格混合——`ERR068594`一类
   (ENA测序run编号，群体标签目前记成笼统的`control`，但真实标签应该从
   `asn720data/asn720.pop.fam`按ID匹配，见上一条)和`B011_merged`一类(跟
@@ -188,50 +124,56 @@ return codes`那一行——如果这次不是`total: 0`而是一个大数字，
   或`db/3k/wild/`140+野生稻组装身份(见besthit分支`ORYZA_BESTHIT_HANDOFF.md`
   第7.2节的老问题)的权威说明文件。已请用户`cat`出内容。
 
-### 1.3 两个panel的关系
+### 1.3 两个panel的关系（历史设计，已废弃，存档）
 
-分析设计里两者是**互补而非替代**关系：3K(29mio) 覆盖驯化稻的谱系多样性，
+~~分析设计里两者是互补而非替代关系：3K(29mio) 覆盖驯化稻的谱系多样性，
 6.7M_720 补充野生稻/近缘种一侧——古稻样本理论上落在"驯化-野生"谱系的某个
-位置，两个panel合起来才能给出有意义的PCA背景。**注意**：这个"互补"的前提
-是两边样本互不重叠；1.2节记录的`CX382`疑似重复如果查实存在系统性重叠，
-这个假设需要重新评估。
+位置，两个panel合起来才能给出有意义的PCA背景。~~ **2026-08-08已放弃**：
+两个panel密度差23倍(chr1上305万 vs 78万)，真实交集只有一两千位点量级，
+撑不起"合并成一个统一底盘"这个设计，改为两个独立PCA，见第0/2节。
 
-## 2. 分析设计(草案)
+## 2. 分析设计（2026-08-08修订版：两个独立PCA，不再求交集）
 
 ```
 besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支产出:
   <sample>.besthit_oryza.fastq.gz / 或对应BAM)
         │
-        ▼
-① 位点合集 = 29M_3k(PLINK) ∩ 6.7M_720(EIGENSTRAT)
-   两者格式不同，需要先统一格式再求交集(染色体命名已确认一致、都是裸数字
-   1-12，见3.1；REF/ALT方向相反但mergeit能自动处理，见3.1)：
-   a) 用 EIGENSOFT `convertf` 把 `29M_3k`(PLINK bed/bim/fam，用原始裸数字
-      染色体版`NB_final_snp.bim.orig`)转成EIGENSTRAT(跟 6.7M_720 已经是的
-      格式统一，也是smartpca的原生输入格式)
-   b) 用 EIGENSOFT `mergeit` 在两个EIGENSTRAT数据集之间按染色体+物理位置
-      求交集，自动纠正两边A1/A2顺序颠倒的问题，并剔除strand-ambiguous
-      (A/T、C/G)位点，产出合并后的panel
-        │
-        ▼
-② 对每个古代样本单独求交集：
-   该样本最终使用的panel子集 = ① ∩ (该样本 besthit 后 reads 实际覆盖到的位点)
-   —— 每个样本的panel子集不同，因为每个样本的read覆盖位置是随机、稀疏的
-        │
-        ▼
-③ 在②确定的位点上，对每个古代样本做 pseudo-haplotype 调用
-   (每个位点随机抽一条覆盖该位置的read，取其碱基作为该样本在该位点的等位型
-   —— 标准古DNA pseudo-haploid做法，不做常规diploid genotype calling)
-        │
-        ▼
-④ smartpca：用现代样本(3K+720子集，完整基因型)建PCA参考空间，
-   古代pseudo-haplotype样本用 -lsqproject 投影模式投上去
-        │
-        ▼
-⑤ 看古代样本在PC空间里落在哪个/哪些现代亚群附近，结合亚群的旱稻/水稻标签
-   (标签来源见第3节——新找到候选来源`asn720data/asn720.pop.fam`)判断
-   生态型归属
+        ├───────────────────────────────┬───────────────────────────────┐
+        ▼                                ▼
+   PCA-A：29M_3k(驯化稻)独立PCA      PCA-B：6.7M_720(野生稻为主)独立PCA
+        │                                │
+   ①A 该样本reads ∩ 29M_3k全部位点    ①B 该样本reads ∩ 6.7M_720全部位点
+      (不再先跟另一个panel求交集，     (同左)
+       直接用各自完整密度，古代样本
+       覆盖到位点的概率更高)
+        │                                │
+   ②A pseudo-haplotype调用             ②B pseudo-haplotype调用
+      (每个位点随机抽一条覆盖read       (同左)
+       取碱基，标准古DNA pseudo-
+       haploid做法)
+        │                                │
+   ③A smartpca -lsqproject投影         ③B smartpca -lsqproject投影
+      现代样本(3K全部3024份)建PCA       现代样本(720份)建PCA参考空间，
+      参考空间，古代样本投影上去        古代样本投影上去
+      标签来源：3K RGP官方亚群标签      标签来源：asn720data的`OrA-OrF`
+      (IND/AUS/ARO/TRJ/TEJ/ADM，       (第3.2节第1条，待核实覆盖率)
+       docs/references/3k_rice_
+       genomes_project/)
+        │                                │
+        ▼                                ▼
+   古代样本在栽培稻多样性里的位置    古代样本在野生稻多样性里的位置
+        │                                │
+        └───────────两个独立坐标空间，不能直接叠加对比───────────┘
+                     分别解读："更接近哪个栽培亚群" /
+                     "更接近哪个野生谱系"，合起来综合判断生态型
 ```
+
+**与旧设计(单一合并panel)的区别**：旧设计想要一张"驯化-野生"统一谱系图，
+现在的方案牺牲了这一点，换来两条独立、密度更高(古代样本覆盖概率更高)的
+路径。这个取舍是2026-08-08晚上根据mergeit实测交集量级（chr1上只有132个
+真实重叠位点）做出的决定，不是从一开始就这样设计的——如果以后有更好的
+方式统一坐标系(比如两边都投影到同一个更大的参考面板)，可以重新评估要不要
+合并，但不是当前优先级。
 
 ## 3. 待确认/待办(按优先级)
 
@@ -249,19 +191,13 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
 - `6.7M_720`(`asn720.6m.snp`，200个位点抽查)：**A1=REF, A2=ALT 占183/200
   (91.5%)**，跟29M_3k方向相反。⚠️ 剩下17/200(8.5%)不符合这个反向规律，
   不是单纯的"顺序颠倒"能解释的，可能是720面板内部个别位点的数据质量问题，
-  暂不处理，等mergeit真正跑起来后对照它自己的匹配/翻转/丢弃日志再回头看
-  这17个位点会不会落在"丢弃"名单里。
-- **两个panel的REF/ALT方向确实相反，但这不阻塞mergeit**：EIGENSOFT的
-  `mergeit`按坐标匹配后会自行比较两边的等位基因集合(不依赖谁被记成A1/A2)，
-  能自动识别并纠正这种顺序颠倒，不需要手动交换720的两列。真正无法靠工具
-  自动解决的只有A/T、C/G这类strand-ambiguous位点，标准做法是合并前直接
-  剔除，见3.2。
+  暂不处理。**现在两个panel各自独立跑PCA，这个反向问题不再需要处理**——
+  smartpca只看自己panel内部的REF/ALT一致性，不涉及跨panel比较。
 
-### 3.2 待办(按优先级)
+### 3.2 待办(按优先级，2026-08-08晚间因放弃合并而重排)
 
-1. **重新打开：确认 `6.7M_720` 和 `asn720data` 的关系(2026-08-07重新打开，
-   之前误判为"已决定弃用、不用查")**——现在明确知道`asn720data/
-   asn720.pop.fam`的FID列是群体标签(`OrA-OrF`等)，需要：
+1. **`6.7M_720`独立PCA的群体标签来源**——确认`asn720data/asn720.pop.fam`
+   的FID列(`OrA-OrF`)能覆盖多少`asn720.6m.ind`里的样本：
    a) 按IID(样本ID)把`asn720.pop.fam`的标签匹配到`asn720.6m.ind`上，
       算出能覆盖多少比例的720号样本(尤其`B0xx_merged`风格的样本有没有
       对应条目，目前只在`asn720.pop.fam`里见过`ERR`风格的ID)
@@ -270,65 +206,22 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
       and cultivated rice`(Nature 2025)论文里的`Or-Ia/Or-Ib/Or-II/
       Or-IIIa/Or-IIIb`分组是**同一套体系还是两套不同的编号方案**——
       字母+罗马数字 vs 单字母，命名习惯不同，不能想当然认为是一回事
-2. **格式统一 + 求交集**——par文件和执行脚本已写好并提交到
-   `scripts/ecotype_pca/`，服务器上直接跑：
-   ```bash
-   cd /path/to/rice_adna_pipeline/scripts/ecotype_pca
-   bash run_convert_merge.sh
-   ```
-   脚本依次做三件事(对应下面a/b/c)：
-   - `par.PLINK.EIGENSTRAT`：29M_3k 用原始(裸数字染色体)bim 转 EIGENSTRAT。
-     **✅ 2026-08-07已在服务器验证跑通**，29,635,224个SNP、3024个样本转换
-     前后完全一致。真实坑点记录(避免以后重踩)：convertf **没有**
-     `inputformat:`这个参数(不存在，写了会被静默忽略)，它是**靠文件名
-     后缀自动识别格式**——PACKEDPED格式要求snp文件以`.pedsnp`/`.map`/
-     `.bim`结尾、indiv文件以`.pedind`/`.ped`结尾(见convertf自带README)。
-     我们的原始文件是`NB_final_snp.bim.orig`/`NB_final_snp.fam`，后缀不
-     符合，convertf识别不出PLINK格式，退回成EIGENSTRAT原生`.snp`格式的
-     解析器去读(列顺序是ID在前、chrom在后，跟PLINK bim的chrom在前顺序
-     相反)，导致把每个SNP的数字ID误当成染色体号，最终段错误。
-     修复：脚本会自动建软链接`NB_final_snp.rawchrom.bim`→`.bim.orig`、
-     `NB_final_snp.rawchrom.pedind`→`.fam`(不复制大文件)，par文件指向
-     这两个软链接名。`.ind`输出里群体标签是`???`是预期行为(`.fam`第6列
-     本来就没有群体信息)，不是这步转丢的。转换耗时约4.4小时CPU时间、峰值
-     内存约40.8GB(29,635,224 SNP × 3024样本的EIGENSTRAT文本输出体量巨大，
-     ~90GB量级，这不是卡住，是数据量真实需要这么久，接手人排队列/申请
-     资源时可以参考这个数字)。
-   - 转换后自动跑一次 `check_ref.py`，核对convertf本身没有把A1/A2顺序转错
-   - `par.MERGE`：mergeit 合并 29M_3k(转换后) 与 6.7M_720，剔除
-     strand-ambiguous(A/T、C/G)位点，取共享位点，产出写到
-     `db/merged_29M3k_6M7_720/merged.{geno,snp,ind}`。
-     **⚠️2026-08-08已在服务器执行完成(`mergeit -p par.MERGE`)，`##end of
-     mergeit`正常输出，但`Histogram of checkmatch return codes`显示
-     `total: 0`——两个panel之间0个SNP匹配上，产出的`merged.{geno,snp,ind}`
-     预期是空的**。参数文件本身没问题(没有"unrecognized parameter"报错)，
-     真正的问题是两边`.snp`文件SNP ID命名方式不同(29M_3k是纯数字物理位置
-     如`1026`，720是`{chrom}np{pos}`如`1np1409`)，字符串永远对不上，很可能
-     是mergeit按ID匹配而非按坐标匹配导致的——详见0节的完整诊断和建议的ID
-     统一重命名修复方案。**这个诊断还没有100%坐实，下一个session先要用户
-     贴mergeit完整log（不只是`##end`那几行）确认，再决定要不要按0节的方案
-     重新生成ID统一的`.snp`副本重跑**——不要凭这段猜测直接改代码重复跑
-     7000+秒的mergeit，先确认诊断对不对。
-   - 需要`convertf`/`mergeit`在PATH里、`python3`能`import pysam`
-     (`check_ref.py`用到)
-3. **旱稻/水稻(或至少 indica/aus/japonica/aromatic 亚群)标签来源——
-   找到强力候选(2026-08-07)，待核实覆盖率**：不再单纯指望SNP-Seek(官网
-   前端下线)或翻论文补充材料——`asn720data/asn720.pop.fam`的FID列
-   (`OrA-OrF`)很可能就是答案，见1.2节和3.2第1条。备用/交叉验证来源仍然
-   保留：*A pangenome reference of wild and cultivated rice*(Nature 2025，
-   PMID 40240605)里129份*O. rufipogon*的`Or-Ia/Or-Ib/Or-II/Or-IIIa/
-   Or-IIIb`谱系分组(该文摘要提到"所有驯化位点都来自japonica祖先谱系
-   Or-IIIa")，以及`db/wild_rice_pangenome_README.txt`(新发现，未读，
-   **另一个会话窗口正在处理，等对方回复cat的内容，不要重复索取**)。
-   三个来源不确定是否互相独立还是同源，第1条查清楚之后再确定最终用哪个/
-   要不要交叉验证。这一步不阻塞2，可以并行。
-4. pseudo-haplotype 调用脚本、smartpca 具体参数(尤其是 `-lsqproject` 相关
-   配置)还没写，等1-3项确认完再动手，避免在错误坐标系/面板/标签上重复
-   返工。
-5. **核查`asn720.6m.ind`与`NB_final_snp.ind`之间的样本ID重叠**(见1.2节
-   `CX382`案例)——去掉`_merged`后缀后系统性比对两份样本列表，确认重叠
-   规模；如果存在系统性重复，第2节①步求交集前需要先定去重策略。当前
-   优先级低于1/2/3，不阻塞mergeit先跑通，但正式产出结果前必须处理。
+2. **`29M_3k`独立PCA的群体标签**——直接用3K RGP官方元数据
+   (`docs/references/3k_rice_genomes_project/rice_line_metadata_20141029.xlsx`，
+   main分支)里的IND/AUS/ARO/TRJ/TEJ/ADM标准亚群标签，**不需要再等
+   `OrA-OrF`**，这条相对简单，可以先做。
+3. **两条独立PCA各自的pseudo-haplotype调用脚本 + smartpca具体参数**（尤其
+   `-lsqproject`相关配置）都还没写。PCA-A(29M_3k)现在就可以开始写，不用
+   等标签问题解决——投影/建PC空间不需要标签，标签只在最后解读阶段才用得
+   到；PCA-B(6.7M_720)同理，标签核实(待办1)可以跟脚本编写并行推进。
+4. **核查`asn720.6m.ind`与`NB_final_snp.ind`之间的样本ID重叠**(即
+   `CX382`疑似重复案例)——去掉`_merged`后缀后系统性比对两份样本列表，
+   确认重叠规模。这原本是"合并两个panel前必须先去重"的问题，现在两个
+   panel各自独立跑PCA，紧迫性降低（同一个体如果分别出现在两个panel里，
+   不会互相污染对方的PCA结果），但如果最终要综合解读PCA-A和PCA-B的结果，
+   知道两边有没有重复个体仍然有参考价值，优先级降到最后。
+5. **mergeit相关内容已废弃，不再是待办**——`scripts/ecotype_pca/par.MERGE`、
+   `run_convert_merge.sh`保留在仓库里仅作调试历史记录，不要再执行。
 
 ## 4. 与 besthit 分支的关系
 
@@ -337,5 +230,5 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
 第5.3节)。besthit 那边的分析(第7/8节:acc2taxid 覆盖度诊断、野生稻组装
 物种身份诊断)结果，间接也会影响本分析线——如果 besthit 阶段发现需要扩充
 competitive mapping 的参考库(把 `db/3k/wild/` 那140+野生稻组装加进去)，
-"确认是Oryza"的read集合本身会变化，本分析线第2节①②步要用的输入也要
-跟着重跑。两条线目前互相独立推进，但下游会汇合，需要留意上游变动。
+"确认是Oryza"的read集合本身会变化，本分析线①A/①B步要用的输入也要跟着
+重跑。两条线目前互相独立推进，但下游会汇合，需要留意上游变动。
