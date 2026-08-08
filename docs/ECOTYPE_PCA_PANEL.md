@@ -20,23 +20,51 @@ PLINK→EIGENSTRAT)已在服务器上验证跑通(2026-08-07，见3.2节step 2)�
 笼统的`control`。这很可能就是第3.2节第3条一直找不到的旱稻/水稻标签来源，
 比指望SNP-Seek或翻论文补充材料直接得多。详见1.2/3.2。
 
-**2026-08-08更新(mergeit已启动，结果未确认)**：`par.MERGE`已在服务器上
-执行(`cd scripts/ecotype_pca && mergeit -p par.MERGE`)，参数文件被正常读入
-(`geno1/snp1/ind1`等参数名这次没有触发"unrecognized parameter"，看来标准
-命名约定这次是对的)，出现了跟convertf那次同款的良性提示`*** warning: first
-snp 1026 is number...`(非致命，SNP ID是纯数字触发的启发式提示，不影响运行)。
-**session结束时mergeit尚未确认完成**——这次是主动结束会话睡觉，不是等到
-运行结果才停的，下一个session第一件事应该是核实：① mergeit进程是否还在跑
-(`ps aux | grep mergeit`)或已经结束；② 结束的话看`db/merged_29M3k_6M7_720/`
-下`merged.{geno,snp,ind}`是否存在、`wc -l`是否等于两个输入panel位点交集的
-合理量级；③ 有没有报错(尤其类似convertf那次"文件后缀识别"这类隐藏坑，
-mergeit这次三个snp/ind输入文件本身已经是EIGENSTRAT原生格式，理论上不该
-再踩同一个坑，但没有实测验证过)。
+**⚠️2026-08-08晚间更新（mergeit已完成，但交集为0，找到了很可能的原因）**：
+`par.MERGE`已在服务器上跑完（`##end of mergeit: 7329.262 seconds cpu
+46421.983 Mbytes in use`），但输出的`Histogram of checkmatch return codes`
+显示`total: 0`——**两个panel之间一个SNP都没匹配上**，`db/merged_29M3k_6M7_720/`
+下产出的`merged.{geno,snp,ind}`预期是空的或接近空的（还没让用户贴
+`wc -l`确认，见待办）。
 
-当前最优先的事三条并行：①确认上面mergeit的执行结果(未完成则继续等/排查，
-已完成则核对交集位点数是否合理)；②核实`asn720data`标签能覆盖`asn720.6m.ind`
-里多少样本、读`db/wild_rice_pangenome_README.txt`(新发现，内容还没看)搞清楚
-`OrA-OrF`具体定义；③注意：③号任务在另一个会话窗口(疑似Codex CLI)同步推进
+**很可能的原因（未100%确认，见下面的验证步骤）**：`mergeit`按**SNP ID
+字符串**匹配两个数据集里的"同一个SNP"，不是按染色体+物理位置。而这两个
+panel的SNP ID命名方式完全不同：
+- `29M_3k`(convertf转换后的`NB_final_snp.snp`)：ID是**纯数字、就是物理
+  位置本身**，例如`1026`、`1033`、`1047`（跟第4列物理位置完全相同的数字，
+  没有染色体前缀）——这也解释了convertf那次"`first snp 1026 is number`"
+  提示的来源
+- `6.7M_720`(`asn720.6m.snp`)：ID是`{染色体}np{物理位置}`格式，例如
+  `1np1409`、`1np1422`
+
+`"1026"`和`"1np1026"`作为字符串永远不可能相等，所以哪怕两个panel在同一条
+染色体同一个物理位置真的都有SNP（大概率是有的——两边分别抽查了chr1的位点
+数：29M有3,057,565个、720有775,775个，量级上完全应该有交集），mergeit按
+ID字符串比对时也会判定"没有共同SNP"，跟convertf那次"文件名后缀识别"是
+同一类"工具的默认假设跟我们数据的实际格式不匹配"的坑。
+
+**这个诊断还没有100%坐实**，下一个session接手时应该先做两件事，而不是
+直接冲去改ID重跑（可能要跑很久，蒙对了省时间，蒙错了浪费几个小时）：
+1. **要用户贴mergeit的完整log（不只是尾巴），而不是只看`##end of mergeit`
+   这几行**——看有没有更具体的"未匹配原因"提示，或者mergeit是不是其实
+   有一个按位置匹配的开关/参数被漏掉了
+2. 确认`merged.{geno,snp,ind}`到底是空文件还是有内容但行数为0/接近0
+
+**如果诊断成立，标准修复思路**（不需要动`.geno`/`.ind`和原始文件，只是
+把两份`.snp`文件的ID列临时统一命名后再合并一次）：
+```bash
+# 生成ID统一为"{染色体}_{物理位置}"格式的.snp副本，不改.geno/.ind、不改行序
+awk 'BEGIN{OFS="\t"} {$1=$2"_"$4; print}' NB_final_snp.snp > NB_final_snp.idfix.snp
+awk 'BEGIN{OFS="\t"} {$1=$2"_"$4; print}' \
+  /home/scratch/yinmt202607/db/6.7M_720/asn720.6m.snp > asn720.6m.idfix.snp
+# 把par.MERGE里的snp1/snp2改指向这两个idfix文件，其余(geno1/ind1/geno2/ind2)不变，重跑mergeit
+```
+
+当前最优先的事三条并行：①**（今晚新发现，提到最前面）确认mergeit
+0匹配的真实原因、决定要不要用上面的ID重命名方案重跑**；②核实`asn720data`
+标签能覆盖`asn720.6m.ind`里多少样本、读`db/wild_rice_pangenome_README.txt`
+（新发现，内容还没看）搞清楚`OrA-OrF`具体定义；③注意：③号任务在另一个
+会话窗口(疑似Codex CLI)同步推进
 中，该文档`db/wild_rice_pangenome_README.txt`内容那部分是那边在等用户贴，
 不要重复索取。
 
@@ -228,14 +256,17 @@ besthit 过滤后的 Oryza reads (来自 codex/oryza-competitive-mapping 分支�
    - `par.MERGE`：mergeit 合并 29M_3k(转换后) 与 6.7M_720，剔除
      strand-ambiguous(A/T、C/G)位点，取共享位点，产出写到
      `db/merged_29M3k_6M7_720/merged.{geno,snp,ind}`。
-     **⏳2026-08-08已在服务器执行(`mergeit -p par.MERGE`)，但session结束时
-     未确认完成**——参数文件被正常读入，没有出现"unrecognized parameter"
-     类错误(说明par.MERGE里`geno1/snp1/ind1`等标准参数名这次是对的)，只
-     看到跟convertf那次同款的良性提示(SNP ID是纯数字)。下一个session先
-     确认：进程是否还在跑(`ps aux | grep mergeit`)、`merged.{geno,snp,ind}`
-     是否已生成、行数是否落在合理的交集量级。如果报错，参照convertf那次
-     的方法——不要凭README字面直接猜下一次修复，先查服务器上mergeit的
-     源码/README定位真实原因。
+     **⚠️2026-08-08已在服务器执行完成(`mergeit -p par.MERGE`)，`##end of
+     mergeit`正常输出，但`Histogram of checkmatch return codes`显示
+     `total: 0`——两个panel之间0个SNP匹配上，产出的`merged.{geno,snp,ind}`
+     预期是空的**。参数文件本身没问题(没有"unrecognized parameter"报错)，
+     真正的问题是两边`.snp`文件SNP ID命名方式不同(29M_3k是纯数字物理位置
+     如`1026`，720是`{chrom}np{pos}`如`1np1409`)，字符串永远对不上，很可能
+     是mergeit按ID匹配而非按坐标匹配导致的——详见0节的完整诊断和建议的ID
+     统一重命名修复方案。**这个诊断还没有100%坐实，下一个session先要用户
+     贴mergeit完整log（不只是`##end`那几行）确认，再决定要不要按0节的方案
+     重新生成ID统一的`.snp`副本重跑**——不要凭这段猜测直接改代码重复跑
+     7000+秒的mergeit，先确认诊断对不对。
    - 需要`convertf`/`mergeit`在PATH里、`python3`能`import pysam`
      (`check_ref.py`用到)
 3. **旱稻/水稻(或至少 indica/aus/japonica/aromatic 亚群)标签来源——
