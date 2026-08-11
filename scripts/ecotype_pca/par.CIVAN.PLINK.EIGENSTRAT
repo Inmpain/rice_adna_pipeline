@@ -1,0 +1,9 @@
+genotypename:    civan_snp.bed
+snpname:         civan_snp.bim
+indivname:       civan_snp.pedind
+outputformat:    EIGENSTRAT
+genotypeoutname: civan_snp.eigenstratgeno
+snpoutname:      civan_snp.snp
+indivoutname:    civan_snp.ind
+familynames:     NO
+numchrom:        12
