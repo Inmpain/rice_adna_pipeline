@@ -101,6 +101,18 @@ db/29M_3k/                           # 【ecotype-pca-panel分支用】3K RG 29m
 db/6.7M_720/                         # 【ecotype-pca-panel分支用】720份样本，野生稻为主
 ├── asn720.6m.geno / .ind / .snp     # EIGENSTRAT格式(smartpca原生输入格式)
 
+db/paper1/                           # 【ecotype-pca-panel分支PCA-C用】Civáň et al. 2019
+                                      # 桥接面板(main分支docs/LITERATURE.md第2.2节)，
+                                      # 路径与完整性2026-08-11已核实，详见ecotype-pca-panel
+                                      # 分支docs/ECOTYPE_PCA_PANEL.md第1.3/5.6节
+├── sativa-rufipogon_SNPs.vcf.gz     # 核SNP矩阵，1056样本/2,365,188 SNP(声称值，总行数
+                                      # 未核实)，坐标系已核实(REF列200/200匹配irgsp.fa)
+├── 1825_Oryza_cpDNA.fastq           # 叶绿体基因组集，⚠️真FASTQ格式(质量值是占位符，
+                                      # 下游只取序列)，1825条记录数已核实(7300行/4)
+├── 1825_Oryza_cpDNA.fastq.tar       # 上面那份的tar打包版
+└── Table_S1/S2/S3.csv               # 样本元数据/叶绿体组装质控/qSH1-qSD1-2-SPS1单倍型
+                                      # 频率，完整行数见ECOTYPE_PCA_PANEL.md第1.3节
+
 db/asian_rice_panel_index/all_wgs_asian_irgsp.acc2taxid  # 【besthit分支用】accession→taxid映射
 ```
 
@@ -325,7 +337,7 @@ git show <commit_hash>:PROJECT_STATUS.md > /tmp/old_version.md
 
 | 文档 | 一句话说明 |
 |---|---|
-| [`docs/ECOTYPE_PCA_PANEL.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/codex/ecotype-pca-panel/docs/ECOTYPE_PCA_PANEL.md) | 旱稻/水稻生态型PCA判定进展，含`asn720data`标签来源发现 |
+| [`docs/ECOTYPE_PCA_PANEL.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/codex/ecotype-pca-panel/docs/ECOTYPE_PCA_PANEL.md) | 旱稻/水稻生态型PCA判定进展，含`asn720data`标签来源发现、三级祖源框架(Civáň 2019桥接面板) |
 | `docs/decisions_log.md`、`docs/flank1kb_msa_exploration.md`、`docs/3krgp_integration_and_simulation_prep.md`、`docs/09_extraction_mapping_matrix_final.md` | 与main分支同名文档，从main继承，内容基本一致 |
 
 ### `codex/oryza-screen-merge` 分支
