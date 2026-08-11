@@ -11,7 +11,7 @@
 > 我们关心的论文和各自用途见 `docs/LITERATURE.md`。**全部文档的目录索引
 > 见本文档第九节**。
 
-最后更新: 2026-08-08
+最后更新: 2026-08-11
 
 ---
 
@@ -210,6 +210,7 @@ rice_adna_pipeline/ (main分支)
 │   ├── REPO_OVERVIEW_STATUS.md                    # 四分支跨线现状汇总
 │   ├── RESEARCH_ROADMAP.md                        # 证据阶梯+五条工作线+实施阶段
 │   ├── LITERATURE.md                              # 我们关心的论文+各自用途(新增)
+│   ├── GPT_COLLAB_PROTOCOL.md                     # 网页版GPT协作协议(新增2026-08-11)
 │   ├── references/3k_rice_genomes_project/        # 3K项目原始文档(新增，见LITERATURE.md第3节)
 │   ├── decisions_log.md                           # 关键决策记录
 │   ├── flank1kb_msa_exploration.md                # 低复杂度QC发现全过程
@@ -284,6 +285,7 @@ git show <commit_hash>:PROJECT_STATUS.md > /tmp/old_version.md
 | 候选Oryza FASTQ怎么合并的 | 切到`codex/oryza-screen-merge`分支，读`oryza_screen_merge/README.md` |
 | 我们关心哪些论文、每篇能不能用/用在哪 | `docs/LITERATURE.md`(main分支) |
 | 3K项目的原始元数据/联盟名单/SRA映射表 | `docs/references/3k_rice_genomes_project/`(main分支) |
+| **怎么让网页版GPT参与这个项目**(读论文出方案/画图) | `docs/GPT_COLLAB_PROTOCOL.md`(main分支，`gpt/*`分支规范+可直接粘贴的prompt模板) |
 | **想看全部文档的完整目录** | 本文档第九节 |
 
 ---
@@ -304,6 +306,7 @@ git show <commit_hash>:PROJECT_STATUS.md > /tmp/old_version.md
 | [`docs/RESEARCH_ROADMAP.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/RESEARCH_ROADMAP.md) | 证据阶梯+五条工作线+Phase 0-4实施阶段，项目级科研框架 |
 | [`docs/REPO_OVERVIEW_STATUS.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/REPO_OVERVIEW_STATUS.md) | 四分支横向进度汇总 |
 | [`docs/LITERATURE.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/LITERATURE.md) | 我们关心的论文+各自用途（ORSC两篇待读、Guo 2025 pangenome、3K系列） |
+| [`docs/GPT_COLLAB_PROTOCOL.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/GPT_COLLAB_PROTOCOL.md) | 网页版GPT协作协议：`gpt/*`分支规范+论文提案/画图两套可直接粘贴的prompt模板（新增2026-08-11） |
 | [`docs/decisions_log.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/decisions_log.md) | 关键决策记录（如为什么选BWA不选Bowtie2） |
 | [`docs/flank1kb_msa_exploration.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/flank1kb_msa_exploration.md) | 低复杂度QC发现全过程 |
 | [`docs/3krgp_integration_and_simulation_prep.md`](https://github.com/Inmpain/rice_adna_pipeline/blob/main/docs/3krgp_integration_and_simulation_prep.md) | 3K RG数据整合+NGSNGS模拟环境搭建 |
