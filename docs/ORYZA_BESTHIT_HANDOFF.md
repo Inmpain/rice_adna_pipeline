@@ -1,16 +1,16 @@
 
 # Oryza competitive mapping / best-hit 接手说明
 
-更新时间：2026-08-11（**第八次更新：16个样本mapping全部跑完了。开始实测
-v2脚本时卡在一个环境问题——服务器上跑`bash submit_oryza_besthit.sh check`
-打出来的还是v1那种老格式的一行输出(`ORYZA_TAXIDS=4529 4530 4536
-DAMAGE_WINDOW=5 TOP_N=10`)，不是v2新增的`Oryza scope: whole genus,
-ORYZA_GENUS_TAXID=4527`那种提示——说明服务器上`scripts/`目录里的
-`submit_oryza_besthit.sh`大概率还是8号推送v2之前的旧版本，`curl`重新下载
-这一步没有真正生效（或者根本没跑）。**已经让用户在服务器上跑
-`grep -c "genus" submit_oryza_besthit.sh oryza_besthit_damage_filter.py`
-确认是不是0，同时给了带`-o`强制覆盖文件名的重新下载命令，**还没收到反馈，
-下一个接手的session/窗口第一件事就是等/要这个grep结果，不要假设已经解决**。
+更新时间：2026-08-11（**第九次更新：根因找到了——不是没重新下载，是
+`Inmpain/rice_adna_pipeline`这个仓库当时是**private**的。服务器上的
+`curl`是匿名请求，没带认证；GitHub对private仓库的raw文件，未认证请求
+一律返回404（不是403，是GitHub故意这么设计的，避免暴露private仓库是否
+存在），跟文件路径/下载步骤本身都无关。用GitHub API查询仓库元数据确认了
+`"private": true`。**用户已经在GitHub网页上把仓库改回public了**——下一
+个session/窗口接手时，第一件事是让用户重新跑一遍下载命令确认404消失，
+`grep -c "genus"`应该不再是0，然后才能继续做5.1b节的besthit v2实测。
+第八次更新：16个样本mapping全部跑完了，开始实测v2脚本时最先卡在这个
+下载404问题上（第九次更新已经查清并修复），当时还误以为是没重新下载。
 第七次更新：besthit主脚本v2重写完成——Oryza范围
 从硬编码3个种(rufipogon/sativa/nivara)改成动态解析整个Oryza属，取代
 `--oryza-taxids`默认值；v1脚本已归档为`oryza_besthit_damage_filter_v1.py`
@@ -942,19 +942,30 @@ DTH8/Ghd8经典大片段缺失（3024份现代品种里5.4%携带这个缺失，
 
 ## 9. 给下一个接手者的具体待办（按优先级，2026-08-11更新后已重排）
 
-0. 【2026-08-11当前正卡住，等用户反馈，比下面所有条目都优先】16个样本
-   mapping已经全部跑完。开始实测5.1b节的besthit v2脚本时，服务器上跑
-   `bash submit_oryza_besthit.sh check`打出来的还是v1的老格式输出
-   （一行`ORYZA_TAXIDS=... DAMAGE_WINDOW=... TOP_N=...`），不是v2应该
-   打的`Oryza scope: whole genus, ORYZA_GENUS_TAXID=4527`——怀疑服务器
-   `scripts/`目录里的`submit_oryza_besthit.sh`没有被8号推送的v2版本真正
-   覆盖（`curl`那步没生效或没执行）。已经请用户跑
-   `grep -c "genus" submit_oryza_besthit.sh oryza_besthit_damage_filter.py`
-   确认文件内容，并给了带`-o`强制指定文件名的重新下载命令。**接手时先
-   要这个grep结果，如果还没跑，先让用户跑，不要跳过这一步直接假设脚本
-   已经是v2去分析besthit结果**——如果grep结果是0，说明确实没覆盖成功，
-   需要再排查是不是目录/权限问题；如果不是0，那说明只是之前那次check
-   凑巧读到了缓存/旧终端里的输出，重新跑一次`check`应该就正常了。
+0. 【2026-08-11，根因已查清，等用户重新验证下载，比下面所有条目都优先】
+   16个样本mapping已经全部跑完。开始实测5.1b节的besthit v2脚本时，服务器
+   `curl`下载新脚本直接报`curl: (22) The requested URL returned error: 404`
+   ——**根因不是路径/没重新下载，是`Inmpain/rice_adna_pipeline`这个仓库
+   当时是private的**：服务器上的`curl`是匿名请求，GitHub对private仓库的
+   raw文件、未认证请求一律返回404（不是403，故意这么设计避免暴露private
+   仓库是否存在）。用GitHub API查过仓库元数据，`"private": true`实锤。
+   **用户已经在GitHub网页把仓库改回public了**。接手时第一件事：
+   ```bash
+   cd /home/scratch/yinmt202607/gene/scripts
+   curl -fsSL -o oryza_besthit_damage_filter.py https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/oryza-competitive-mapping/scripts/oryza_besthit/oryza_besthit_damage_filter.py
+   curl -fsSL -o oryza_besthit_damage_filter_v1.py https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/oryza-competitive-mapping/scripts/oryza_besthit/oryza_besthit_damage_filter_v1.py
+   curl -fsSL -o submit_oryza_besthit.sh https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/oryza-competitive-mapping/scripts/oryza_besthit/submit_oryza_besthit.sh
+   chmod +x submit_oryza_besthit.sh
+   grep -c "genus" submit_oryza_besthit.sh oryza_besthit_damage_filter.py
+   ```
+   两个文件的grep计数都应该非0。确认无误后跑`bash submit_oryza_besthit.sh
+   check`，应该能看到`Oryza scope: whole genus, ORYZA_GENUS_TAXID=4527`
+   这行，再跑`smoke`（见5.1b节末尾的验证步骤），把smoke的
+   `summary.tsv`和`[config] Oryza scope: ...`那行日志贴回来。
+   **顺带教训**：如果之后还有别的仓库出现"明明路径对、服务器能连
+   github.com，但curl就是404"，先查一下这个仓库当前是不是private——
+   这条已经补进`github-repo-protocol`skill里（见该skill文件），下次
+   不用再从头排查一遍。
 1. 【0.6节，acc2taxid taxid修正】服务器dry-run已经跑过一次，
    证实互换方向完全正确（详见0.6节的真实输出数字），但发现`irgsp.acc2taxid`
    有一行表头会污染合并文件，脚本已修复（commit `2965348`）但**这个修复
