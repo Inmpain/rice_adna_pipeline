@@ -8,7 +8,7 @@
 > 重复），各工作分支的具体分析结论仍写在各自的 handoff 文档里，本文档
 > 只负责"这篇文章说了什么、能不能用、边界在哪"。
 
-最后更新：2026-08-08
+最后更新：2026-08-11
 
 ---
 
@@ -69,7 +69,12 @@ DOI——这里不猜测填充，避免记错。**读文档的人请在读这篇
 是**具体材料编号**（来自Guo et al. 2025，见2.1节），不能因为都以`W`开头
 就把`W1214`理解成"属于W1亚群"、`W2064`理解成"属于W2亚群"，需要查两篇
 文章各自材料表里真正的对应关系（IRGC编号/采集坐标），才能确认某个具体
-材料落在哪个ORSC遗传亚群、是哪种生态型。
+材料落在哪个ORSC遗传亚群、是哪种生态型。**这套`W1-W6`跟第2.2节Civáň
+2019论文里的`W0101/W0102/...`四位数字编号也不是一回事**——后者是Civáň
+论文自己给1056份材料的具体样本编号（不是亚群名），三套`W`开头的编号
+(本节ORSC的`W1-W6`亚群名、Guo 2025的`G25_ruf_W1214`等材料编号、Civáň
+2019的`W0101`等材料编号)互不相同、互不兼容，命名撞车纯属巧合，引用时
+必须点名具体是哪篇文章的哪套编号。
 
 **两篇文章（本节1.2 + 2.1的Guo 2025）应该怎么配合**：
 1. 以Guo et al. 2025的129份染色体级野生稻组装作为候选池
@@ -138,6 +143,53 @@ panel"的原因：我们已经在用对的那篇文章的数据了，缺的是**
 `docs/RESEARCH_ROADMAP.md`第2节C、`codex/oryza-competitive-mapping`
 分支`docs/ORYZA_BESTHIT_HANDOFF.md`第7.2节，这是main分支和该分支共同
 在追的同一个开放问题。
+
+### 2.2 Civáň et al. 2019, Origin of the Aromatic Group of Cultivated Rice (Oryza sativa L.) Traced to the Indian Subcontinent（2026-08-11新增，已在用）
+
+**引用**：Civáň P, Ali S, Batista-Navarro R, Drosou K, Ihejieto C,
+Chakraborty D, Ray A, Gladieux P, Brown TA. (2019). *Genome Biology and
+Evolution*, 11(3):832–843. DOI:
+[10.1093/gbe/evz039](https://doi.org/10.1093/gbe/evz039)。PMID: 30793171。
+（引用信息已用WebFetch/WebSearch核实，非用户/GPT转述，可信）
+
+**核心结论**：芳香型栽培稻(aromatic，籼粳之外的第三类)起源于粳稻
+(japonica)扩散到印度次大陆后，与当地野生/原始栽培稻群体发生杂交——现存
+芳香型材料的细胞质(母系)和29–47%的核基因组来自这支印度本地血统，杂交
+发生在约4000–2400年前。方法上用`Loter`做局部祖源推断(local ancestry
+inference)，逐段判断基因组区域来自japonica祖先还是印度非japonica祖先。
+
+**两个配套数据集**（都是公开、可直接下载，已用WebFetch核实内容）：
+
+| 数据集 | 平台/DOI | 内容 |
+|---|---|---|
+| 核SNP矩阵 | Mendeley Data, DOI [10.17632/74dbx8bmp9.1](https://data.mendeley.com/datasets/74dbx8bmp9/1) | **1,056份**样本：595份栽培稻(283 indica、154 japonica、124 aus、34 aromatic) + 461份野生稻，**2,365,188个双等位SNP**，坐标系IRGSP-1.0 |
+| 叶绿体基因组集 | Zenodo, DOI [10.5281/zenodo.61977](https://doi.org/10.5281/zenodo.61977) | **1,825个**近乎完整的Oryza叶绿体基因组(野生rufipogon + 栽培各亚群) |
+
+**用户已把这两个数据集下载到服务器**(2026-08-11，路径未知，见
+`codex/ecotype-pca-panel`分支`docs/ECOTYPE_PCA_PANEL.md`最新章节的待办)，
+连同论文的Table S1(样本×祖源相似度/Loter局部祖源结果)、Table S2(样本×
+叶绿体单倍型/SRA来源)、Table S3(qSH1/qSD1-2/SPS1等驯化性状基因在
+japonica/印度非japonica单倍型间的频率差异)一并保存。
+
+**为什么这篇文章现在对本项目重要，不只是"多一篇文献"**：
+- 核SNP矩阵覆盖**栽培(indica/japonica/aus/aromatic)+野生**统一坐标系，
+  是`codex/ecotype-pca-panel`分支`29M_3k`(纯栽培)和`6.7M_720`(以野生为主)
+  两个独立panel之间目前唯一现成的"桥梁"候选——具体设计讨论见该分支
+  `docs/ECOTYPE_PCA_PANEL.md`
+- Table S3的`qSH1`(落粒)/`qSD1-2`(休眠/株高)/`SPS1`(穗粒结构)三个驯化
+  性状基因，是本项目"目前完全没有专门资源覆盖"的生态型/表型证据缺口
+  (`docs/RESEARCH_ROADMAP.md`工作线4)的第一批具体候选功能位点，值得
+  和main分支`db/gene/flower_gene.txt`的57个开花基因清单做交叉核对，看
+  有没有重合或互补
+- 叶绿体数据集提供独立于核基因组的母系谱系证据层，呼应
+  `docs/RESEARCH_ROADMAP.md`证据阶梯里"不能用单一证据类型跳答高层级
+  问题"的原则——核祖源+叶绿体母系谱系分开报告，比只看核PCA更稳健
+
+**尚未做的事**：完整Table S1/S2/S3内容还只是服务器终端`head`预览过，
+没有确认服务器上的确切路径、也没有正式上传到本仓库
+`docs/references/`；数据集本身"in preparation"式的历史(Zenodo条目建于
+2016年，当时论文还没发表)跟2019年正式发表版本之间的对应关系已通过
+DOI/期刊信息核实一致，不是两个不同的东西。
 
 ---
 
