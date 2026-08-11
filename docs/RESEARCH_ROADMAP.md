@@ -1,3 +1,4 @@
+
 # 研究总纲：吴哥沉积物古DNA水稻判定——证据阶梯与实施路线图
 
 > 本文档是横跨 `codex/oryza-competitive-mapping`(besthit) 和
@@ -64,14 +65,16 @@ ecotype-pca-panel分支设计到层级3-4；**层级0(古DNA真实性QC)和层�
 
 | 资源 | 样本/SNP | 当前用途 | 状态 |
 |---|---|---|---|
-| `db/29M_3k/` | 3024份3K RG驯化稻，~2900万SNP，PLINK | 建立栽培稻坐标(IND/AUS/ARO/TRJ/TEJ/ADM) | convertf转EIGENSTRAT已在服务器验证跑通(29,635,224 SNP/3024样本无损) |
-| `db/6.7M_720/` | 720份(以野生稻为主)，~670万SNP，EIGENSTRAT | 野生稻基因型 | 待与29M_3k求交集，mergeit未验证；样本ID两种风格混合(ERR开头+B0xx_merged) |
-| `db/asn720data/` | 疑似同一批720份，仅9.5万SNP | **只用其标签列**：FID是`OrA-OrF`群体标签，键在ERR风格ID上 | 2026-08-07推翻"已弃用"的旧判断；标签覆盖率(尤其B0xx风格样本)未查 |
+| `db/29M_3k/` | 3024份3K RG驯化稻，~2900万SNP，PLINK | 建立栽培稻坐标(IND/AUS/ARO/TRJ/TEJ/ADM)，独立PCA-A | convertf转EIGENSTRAT已在服务器验证跑通(29,635,224 SNP/3024样本无损)，可直接作为PCA-A输入 |
+| `db/6.7M_720/` | 720份(以野生稻为主)，~670万SNP，EIGENSTRAT | 野生稻独立PCA-B基因型 | **2026-08-08已放弃与29M_3k求交集**(mergeit实测交集过稀疏，chr1仅132个真实重叠位点，全基因组估计仅一两千)，改为独立PCA，见`docs/ECOTYPE_PCA_PANEL.md`；样本ID两种风格混合(ERR开头+B0xx_merged) |
+| `db/asn720data/` | 疑似同一批720份，仅9.5万SNP | **只用其标签列**：FID是`OrA-OrF`群体标签，键在ERR风格ID上，PCA-B专用 | 2026-08-07推翻"已弃用"的旧判断；标签覆盖率(尤其B0xx风格样本)未查 |
 
-三者关系：29M_3k给栽培稻坐标，6.7M_720给野生稻基因型，asn720data(目前)
-只贡献标签，三者必须先用**共享accession/原始run ID/样本元数据**建立可审计
-的crosswalk，才能形成统一panel——不能假设"720"这个数字在三个文件里指的是
-同一批个体。
+三者关系（**2026-08-08后更新**：不再要求29M_3k和6.7M_720求交集，`db/29M_3k/`
+独立支撑PCA-A、`db/6.7M_720/`+`db/asn720data/`独立支撑PCA-B）：29M_3k给
+栽培稻坐标，6.7M_720给野生稻基因型，asn720data贡献PCA-B的群体标签，PCA-A
+和PCA-B是两个独立坐标空间，不再需要建立跨三者的统一crosswalk才能出结果——
+但如果以后要综合解读两条PCA的结果，样本ID层面的crosswalk仍有参考价值
+（例如判断PCA-A、PCA-B里有没有同一个体）。
 
 ### C. 尚未接入流程的高质量组装原料
 
@@ -152,8 +155,14 @@ library.txt`里的层位/年代模型细节。
    对齐到一张表
 2. 不只靠字符串匹配去重——`CX382`这类疑似重复(见`docs/ECOTYPE_PCA_PANEL.md`
    1.2节)最好用共享SNP做fingerprint/IBS确认是否为同一个体
-3. 完成`29M_3k ∩ 6.7M_720`求交集(mergeit)，做downsampling测试古代样本
-   低覆盖度投影偏差
+3. ~~完成`29M_3k ∩ 6.7M_720`求交集(mergeit)~~——**2026-08-08已放弃**：
+   mergeit按SNP ID字符串匹配、两边ID命名方式不同(`1026` vs `1np1409`)
+   导致0匹配，修复ID命名后重新跑，交集仍只有一两千位点量级（chr1单条
+   染色体实测132个真实重叠位点），撑不起下游"每个古代样本再对交集求
+   交集"这一步。改为`29M_3k`和`6.7M_720`各自独立跑smartpca（PCA-A/
+   PCA-B），详见`docs/ECOTYPE_PCA_PANEL.md`第0/2节。downsampling测试
+   古代样本低覆盖度投影偏差这个待办依然成立，只是要在两条独立PCA各自
+   内部做，不再是合并后的单一面板
 4. 除PCA外，补充f3/f4、D-statistics等正式统计检验，给置信区间，不要只
    凭"投影位置靠近某簇"下结论
 
@@ -188,13 +197,15 @@ Prohm*, Archaeological Research in Asia 24:100213——**专门做吴哥窟和�
 |---|---|---|---|
 | **0：资源审计与冻结** | 生成全部数据库/panel/样本/标签的manifest，核对坐标版本、物种名、taxid | `reference_manifest.tsv`、`sample_crosswalk.tsv`、`panel_overlap_report.md`、`keep_taxonomy_rules.tsv` | 720是否独立个体、B0xx与ERR的关系、`db/3k/wild/`与Guo2025的关系都有可复查答案 |
 | **1：物种竞争库升级** | 平衡去冗余的Pan-Oryza库、模拟短损伤reads测试、多级KEEP | 物种混淆矩阵、每物种precision/recall | 能量化O.sativa/ORSC/其他Oryza间的误分率 |
-| **2：统一祖源Panel** | 合并29M_3k+6.7M_720、补完720标签、建东南亚子面板 | 固定SNP集、RAY投影、f-statistics | OrA-OrF每个标签都有明确来源和地理分布，对应不上就明写"不可互译" |
+| **2：统一祖源Panel** | ~~合并29M_3k+6.7M_720~~(已放弃，改两个独立PCA)、补完720标签、建东南亚子面板 | 固定SNP集(两条独立)、RAY投影、f-statistics | OrA-OrF每个标签都有明确来源和地理分布，对应不上就明写"不可互译" |
 | **3：生态型元数据层** | 接入passport/论文补充表/本地采样信息 | `ecology_metadata_panel.tsv` | 元数据质量不足时，明确停在"遗传群"层，不制造生态型结论 |
 | **4：吴哥综合解释** | 合并古DNA+年代+沉积学+宏遗存证据 | 每个古稻样本的证据卡(真实性/物种层级/祖源/生态型支持/置信等级) | 每条结论可追溯到数据层，"未检出"/"数据不足"/"支持排除"/"支持归属"严格分开 |
 
 当前项目实际所处阶段：besthit分支在Phase 1（竞争库已建但未做manifest/
-混淆矩阵），ecotype-pca-panel分支在Phase 0-2之间（坐标核对完成、求交集
-未跑通、标签crosswalk未建），Phase 3/4完全未开始。
+混淆矩阵，详见该分支`docs/ORYZA_BESTHIT_HANDOFF.md`最新状态）；
+ecotype-pca-panel分支在Phase 0-2之间（坐标核对完成、放弃合并改两个独立
+PCA、PCA-A输入已就绪、PCA-B标签crosswalk未建、pseudo-haplotype/smartpca
+脚本未写、且硬阻塞在besthit未完成），Phase 3/4完全未开始。
 
 ---
 
@@ -206,7 +217,12 @@ Prohm*, Archaeological Research in Asia 24:100213——**专门做吴哥窟和�
    现成染色体级资源，见`docs/ORYZA_BESTHIT_HANDOFF.md`7.2节
 3. **导出131数据库+KEEP的正式manifest**——先量化参考不均衡，再谈要不要
    替换/扩充参考
-4. 【次优先】验证`29M_3k`∩`6.7M_720`的mergeit求交集
+4. ~~验证`29M_3k`∩`6.7M_720`的mergeit求交集~~——**2026-08-08已放弃合并**，
+   改为两个独立PCA(`29M_3k`单独 + `6.7M_720`单独)，见第2节B。该线现在
+   真正的阻塞是：①besthit还没跑完(16个样本仅少数几个有完整besthit输出，
+   具体进度见`docs/ORYZA_BESTHIT_HANDOFF.md`最新状态)；②`6.7M_720`那边
+   `OrA-OrF`标签覆盖率待核实(P0第1条)；③两条独立PCA各自的pseudo-haplotype
+   调用脚本、smartpca具体参数都还没写
 5. 【暂缓，等1-4有结论后再做】另建生态元数据层——不要继续把`OrA-OrF`或
    `IND/TRJ`直接当upland/deepwater标签用
 6. 样品侧并行补齐古DNA QC(工作线1)——否则即使群体投影做得再漂亮，也证明
@@ -221,9 +237,9 @@ Prohm*, Archaeological Research in Asia 24:100213——**专门做吴哥窟和�
 
 本文档不重复`ORYZA_BESTHIT_HANDOFF.md`(besthit技术细节、bug修复历史、
 smoke test具体数据)和`ECOTYPE_PCA_PANEL.md`(convertf/mergeit踩坑记录、
-CX382重复线索)里已有的内容，只负责把两条线的进度对应到统一的证据阶梯和
-实施阶段上。**任何具体技术决策/参数/bug仍以两个分支各自的HANDOFF文档为
-准**；本文档的P0清单里第1/2条如果查出结果，应该分别写回
+两个独立PCA的设计定案)里已有的内容，只负责把两条线的进度对应到统一的
+证据阶梯和实施阶段上。**任何具体技术决策/参数/bug仍以两个分支各自的
+HANDOFF文档为准**；本文档的P0清单如果查出结果，应该分别写回
 `ECOTYPE_PCA_PANEL.md`和`ORYZA_BESTHIT_HANDOFF.md`，本文档只更新"现在在
 哪个Phase"这个层面的总结。
 
