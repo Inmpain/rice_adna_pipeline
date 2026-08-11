@@ -53,12 +53,19 @@ mergeit，`##end of mergeit`正常结束但`Histogram of checkmatch return codes
 作为这段调试过程的记录，**不再是当前分析路径的一部分**，不要在新设计里
 继续用它们。
 
-**⚠️当前整条线的硬性阻塞：besthit（`codex/oryza-competitive-mapping`分支）
-还没有跑完**——这条PCA线的输入`<sample>.besthit_oryza.fastq.gz`要等besthit
-产出，具体进度以该分支`docs/ORYZA_BESTHIT_HANDOFF.md`第0节为准（截至
-2026-08-08晚，16个古代样本里只有4个跑完全量besthit，且v2脚本刚写完还没
-在真实数据上验证，接手时先去该分支核实最新状态，不要假设本文档这里的
-数字仍然准确）。**这份文档目前只能做设计和脚本准备，不能真正跑通端到端**。
+**⚠️2026-08-11更新：besthit的硬阻塞可能已经解除，但有一个新的前置问题
+待评估**——besthit分支`docs/ORYZA_BESTHIT_HANDOFF.md`第0/6.3节显示v2脚本
+已经在服务器真实数据上对**全部16个古代样本**跑完正式批(`submit all`+
+`merge`)，16/16一致性自检通过，整体留存率13.72%，早就不是"只有4个样本"
+的旧状态了(那是2026-08-08晚的快照，本文档之前一直没同步，接手时不要信
+这句话之前的版本)。**但**besthit v2的KEEP范围是**整个Oryza属**(不只
+sativa/rufipogon/nivara三个目标种)，而本文档PCA-A/PCA-B/PCA-C三个panel
+都只覆盖目标AA基因组复合群——这意味着直接拿`<sample>.besthit_oryza.
+fastq.gz`喂给PCA，可能混入其他15个Oryza种的reads，产生虚假投影信号。
+已经在该分支记录了一条"按taxonomic tier分级输出KEEP集合"的建议(见该分支
+第7.6节)，**这条建议是否已经实施、`target_aa_complex.fastq.gz`这类分级
+输出是否已经存在，接手第一件事需要去besthit分支核实**，核实之前①A/①B/
+①C不要直接用全量`besthit_oryza.fastq.gz`当作"确认是目标AA复合群"的输入。
 
 ## 1. 数据库
 
@@ -242,6 +249,12 @@ Civáň统一面板先给出"栽培/野生/混合"这个粗判断，两边不再
 0. **【新增最优先】确认Civáň 2019数据在服务器上的确切路径，并核对下载
    完整性**——见第5.6节的具体核对清单。这是第5节整个三级框架能不能真正
    动手的前提。
+0b. **【新增，同等优先级】去besthit分支核实"按taxonomic tier分级输出
+    KEEP集合"这条建议(第0节末尾/第4节末尾)是否已经实施**——如果还没有，
+    需要决定是在besthit分支加这个分级逻辑，还是本分支自己对
+    `besthit_oryza.fastq.gz`做一次后处理(用`decisions.tsv`里现成的
+    `best_oryza_taxid`列筛出sativa/rufipogon/nivara子集)，两种做法都
+    可行，但要先选一种，不要两边各写一份。
 1. **`6.7M_720`独立PCA的群体标签来源**——确认`asn720data/asn720.pop.fam`
    的FID列(`OrA-OrF`)能覆盖多少`asn720.6m.ind`里的样本：
    a) 按IID(样本ID)把`asn720.pop.fam`的标签匹配到`asn720.6m.ind`上，
@@ -277,16 +290,16 @@ competitive mapping 的参考库(把 `db/3k/wild/` 那140+野生稻组装加进�
 "确认是Oryza"的read集合本身会变化，本分析线①A/①B步要用的输入也要跟着
 重跑。两条线目前互相独立推进，但下游会汇合，需要留意上游变动。
 
-**2026-08-11新增**：GPT建议besthit的KEEP集合按taxonomic tier分级输出
-(`oryza_genus.fastq.gz`全属 / `target_aa_complex.fastq.gz`目标AA基因组
-复合群 / `other_oryza.fastq.gz`其他Oryza种 / `read_taxon_assignment.tsv`
-逐read最佳taxon)，而不是现在v2版本的单一"全Oryza属都算KEEP"。理由：
+**2026-08-11新增，已转发并落地为besthit分支第7.6节开放问题**：GPT建议
+besthit的KEEP集合按taxonomic tier分级输出(`oryza_genus.fastq.gz`全属 /
+`target_aa_complex.fastq.gz`目标AA基因组复合群 / `other_oryza.fastq.gz`
+其他Oryza种)，而不是现在v2版本的单一"全Oryza属都算KEEP"。理由：
 Civáň/3K/720三个PCA panel主要覆盖sativa/rufipogon/nivara这个目标AA复合群，
 如果besthit的KEEP集合混入了其他15个Oryza种的reads，这些reads投到PCA
-里会被强行投影到某个不相关的现代栽培/野生群附近，产生虚假信号。**这是
-对besthit分支的建议，不是本分支能单独实施的**，需要贴到
-`codex/oryza-competitive-mapping`分支`docs/ORYZA_BESTHIT_HANDOFF.md`
-里去，本文档只记录这个想法的来源和理由，不重复维护。
+里会被强行投影到某个不相关的现代栽培/野生群附近，产生虚假信号。**这条
+建议是否采纳、什么时候做，由besthit分支接手人根据其自身进度决定**（见
+该分支`docs/ORYZA_BESTHIT_HANDOFF.md`第7.6节），本文档3.2节待办0b是
+本分支这边需要做的对应核实工作。
 
 ---
 
@@ -392,7 +405,9 @@ Civáň论文Table S3给出`qSH1`(落粒)/`qSD1-2`(休眠/株高)/`SPS1`(穗粒�
 2. 参考main分支`docs/RESEARCH_ROADMAP.md`工作线5(8.3节，57基因SV判生态型
    的方法论)里已经验证过的教训——**覆盖度QC必须先做**，DTH8/Ghd8那次
    "明星基因古DNA照样零覆盖"的先例同样适用于`qSH1`/`qSD1-2`/`SPS1`，
-   不要一上来就冲进去分析，先用现有BAM查这三个位点古代样本的覆盖度
+   不要一上来就冲进去分析，先用现有BAM查这三个位点古代样本的覆盖度。
+   **2026-08-11：besthit分支8.3节独立提出了同样的思路，两边结论一致
+   （见该分支`docs/ORYZA_BESTHIT_HANDOFF.md`第8.3节末尾）**
 
 **这条是否要开新的git分支**：不需要。这本质上是"生态型功能位点证据层"，
 逻辑上属于`docs/RESEARCH_ROADMAP.md`工作线4，技术上又跟本分支的PCA
@@ -404,9 +419,11 @@ Civáň论文Table S3给出`qSH1`(落粒)/`qSD1-2`(休眠/株高)/`SPS1`(穗粒�
 参考main分支8.3节"先做半天工作量的覆盖度QC，再决定要不要投入"这个已经
 验证过的性价比原则。**
 
-### 5.5 besthit读集合分级（记录，转发给besthit分支）
+### 5.5 besthit读集合分级（已转发并落地，见第4节末尾/besthit分支第7.6节）
 
-见第4节末尾，这条建议本质上是besthit分支的工作，本节只记录来源。
+见第4节末尾，这条建议本质上是besthit分支的工作，**已经贴过去了**（该分支
+`docs/ORYZA_BESTHIT_HANDOFF.md`第7.6节，2026-08-11），本分支这边对应的
+核实待办是3.2节第0b条。
 
 ### 5.6 待办：确认Civáň数据在服务器上的确切下载状态
 
