@@ -1,7 +1,17 @@
 
 # Oryza competitive mapping / best-hit 接手说明
 
-更新时间：2026-08-08（**第七次更新：besthit主脚本v2重写完成——Oryza范围
+更新时间：2026-08-11（**第八次更新：16个样本mapping全部跑完了。开始实测
+v2脚本时卡在一个环境问题——服务器上跑`bash submit_oryza_besthit.sh check`
+打出来的还是v1那种老格式的一行输出(`ORYZA_TAXIDS=4529 4530 4536
+DAMAGE_WINDOW=5 TOP_N=10`)，不是v2新增的`Oryza scope: whole genus,
+ORYZA_GENUS_TAXID=4527`那种提示——说明服务器上`scripts/`目录里的
+`submit_oryza_besthit.sh`大概率还是8号推送v2之前的旧版本，`curl`重新下载
+这一步没有真正生效（或者根本没跑）。**已经让用户在服务器上跑
+`grep -c "genus" submit_oryza_besthit.sh oryza_besthit_damage_filter.py`
+确认是不是0，同时给了带`-o`强制覆盖文件名的重新下载命令，**还没收到反馈，
+下一个接手的session/窗口第一件事就是等/要这个grep结果，不要假设已经解决**。
+第七次更新：besthit主脚本v2重写完成——Oryza范围
 从硬编码3个种(rufipogon/sativa/nivara)改成动态解析整个Oryza属，取代
 `--oryza-taxids`默认值；v1脚本已归档为`oryza_besthit_damage_filter_v1.py`
 （`git mv`保留历史）。本地合成数据验证通过，但没有服务器真实BAM/真实数据
@@ -930,9 +940,22 @@ DTH8/Ghd8经典大片段缺失（3024份现代品种里5.4%携带这个缺失，
    到时候再具体设计怎么从探针捕获的reads里判定SV有无（比如split-read/
    discordant-pair证据，还是简单的深度骤降，取决于具体是哪种SV）。
 
-## 9. 给下一个接手者的具体待办（按优先级，2026-08-08更新后已重排）
+## 9. 给下一个接手者的具体待办（按优先级，2026-08-11更新后已重排）
 
-1. 【当前最优先，明天开工第一件事】0.6节：服务器dry-run已经跑过一次，
+0. 【2026-08-11当前正卡住，等用户反馈，比下面所有条目都优先】16个样本
+   mapping已经全部跑完。开始实测5.1b节的besthit v2脚本时，服务器上跑
+   `bash submit_oryza_besthit.sh check`打出来的还是v1的老格式输出
+   （一行`ORYZA_TAXIDS=... DAMAGE_WINDOW=... TOP_N=...`），不是v2应该
+   打的`Oryza scope: whole genus, ORYZA_GENUS_TAXID=4527`——怀疑服务器
+   `scripts/`目录里的`submit_oryza_besthit.sh`没有被8号推送的v2版本真正
+   覆盖（`curl`那步没生效或没执行）。已经请用户跑
+   `grep -c "genus" submit_oryza_besthit.sh oryza_besthit_damage_filter.py`
+   确认文件内容，并给了带`-o`强制指定文件名的重新下载命令。**接手时先
+   要这个grep结果，如果还没跑，先让用户跑，不要跳过这一步直接假设脚本
+   已经是v2去分析besthit结果**——如果grep结果是0，说明确实没覆盖成功，
+   需要再排查是不是目录/权限问题；如果不是0，那说明只是之前那次check
+   凑巧读到了缓存/旧终端里的输出，重新跑一次`check`应该就正常了。
+1. 【0.6节，acc2taxid taxid修正】服务器dry-run已经跑过一次，
    证实互换方向完全正确（详见0.6节的真实输出数字），但发现`irgsp.acc2taxid`
    有一行表头会污染合并文件，脚本已修复（commit `2965348`）但**这个修复
    本身还没在服务器上重新验证过**。步骤：①重新下载最新脚本；②再跑一次
