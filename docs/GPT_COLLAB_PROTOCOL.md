@@ -1,0 +1,1 @@
+'"$(cat /private/tmp/claude-501/-Volumes-SSD-claude-code/aa9a4b3f-c343-42a5-b1b3-8575d43eb7a7/scratchpad/GPT_COLLAB_PROTOCOL.md)"'
