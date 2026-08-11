@@ -1,7 +1,15 @@
-
 # Oryza competitive mapping / best-hit 接手说明
 
-更新时间：2026-08-11（**第九次更新：根因找到了——不是没重新下载，是
+更新时间：2026-08-11（**第十次更新：v2版besthit已经在服务器真实数据上对
+16个样本跑完正式批（`submit all` + `merge`），16行`besthit_summary.tsv`
+全部通过脚本内部一致性自检，整体留存率(kept/input)13.72%。其中此前跑过
+v1的4个样本(LV6000619499/619917/620016/620032)，v2留存率(11.08%/10.59%/
+11.19%/12.28%)相对v1(5.00%/5.00%/4.37%/4.92%)整体上移约2.35倍——方向和
+幅度都远超此前1000条子集smoke test预测的+32%，说明smoke子集不能代表全量
+留存率，以后评估改动幅度必须看全量结果。新发现：16个样本留存率大多落在
+9.7%-14.3%区间，但`LV7008416349`(18.82%)和`LV7008416379`(28.18%)明显偏
+高，原因未知，是当前优先级最高的待查项，详见6.3节和9节待办1。第九次更新：
+根因找到了——不是没重新下载，是
 `Inmpain/rice_adna_pipeline`这个仓库当时是**private**的。服务器上的
 `curl`是匿名请求，没带认证；GitHub对private仓库的raw文件，未认证请求
 一律返回404（不是403，是GitHub故意这么设计的，避免暴露private仓库是否
@@ -35,21 +43,17 @@ Oryza覆盖度诊断结果出来后，证伪了最早"数据库野生稻缺失"�
 > 读这份文档前提：你没有服务器直接执行权限，所有服务器端命令的输出都需要
 > 人类协作者手动跑了贴回来。不要假设你能直接看到服务器文件系统。
 
-## 0. 现状一句话总结（2026-08-11更新，以此为准，不要看更新日志自己拼）
+## 0. 现状一句话总结（2026-08-11当晚二次更新，以此为准，不要看更新日志自己拼）
 
-**16个样本的competitive mapping已经全部跑完**。besthit阶段：v1版本
-（`--oryza-taxids`硬编码3个种）已经在4个样本(LV6000619499/619917/620016/
-620032)上跑过全量，留存率(kept/input)4.37%-5.00%，高度一致（见6/7.5节）；
-其余12个样本还没跑过besthit。v2版本（Oryza范围改成动态解析整个属，见
-5.1b节）已经写完、本地合成数据验证通过，**但还没有在服务器真实数据上跑过
-一次**——这是当前唯一的实质性阻塞项，不是acc2taxid、不是损伤窗口、不是
-代码bug（v1/v2代码本身都没有已知bug，过程中发现并修复了5个，见5.6）。
-
-**当前卡在**：仓库`Inmpain/rice_adna_pipeline`一度被设成private，导致
-服务器上匿名`curl`下载v2脚本时全部返回404（详见0.5节前的更新日志第九条、
-5.1b节、9节第0条）。用户已经把仓库改回public，但**还没有收到"重新下载+
-`check`+`smoke`都跑通"的确认反馈**——下一个session接手的第一件事，就是
-等/要这个反馈，不要假设已经跑通就直接去分析besthit结果或调整参数。
+**16个样本的competitive mapping、以及besthit v2的全量正式批跑，都已经
+在服务器真实数据上完成**。v2版本（Oryza范围动态解析整个属，见5.1b节）在
+确认`[config] Oryza scope: whole genus, ORYZA_GENUS_TAXID=4527`日志行正确
+出现后，对全部16个样本跑了`submit all`+`merge`，16/16一致性自检通过，
+整体留存率(kept/input)13.72%，个体范围9.67%-28.18%——详见6.3节完整表格。
+**当前唯一实质性待查项**：`LV7008416349`(18.82%)和`LV7008416379`
+(28.18%)这两个样本留存率明显高于其余14个(9.7%-14.3%)，原因未知，见9节
+待办1。此前"仓库一度private导致404下载失败"（见更新日志第九条）已经
+彻底解决，不再是阻塞项。
 
 另有一条独立、不阻塞besthit的并行线：`all_wgs_asian_irgsp.acc2taxid`的
 taxid整体反标修正脚本dry-run已经在服务器验证过（见0.5/0.6节），但
@@ -455,11 +459,13 @@ adjusted_NM比较。
 (默认都为空=关闭)。
 
 **输出格式变化**：`summary.tsv`新增一列`rejected_low_quality`(质量预筛
-关闭时恒为0)。⚠️**这意味着v1和v2产出的`summary.tsv`列数不一样**——已经
-用v1跑完的4个样本(LV6000619499/619917/620016/620032)的`summary.tsv`是
+关闭时恒为0)。⚠️**这意味着v1和v2产出的`summary.tsv`列数不一样**——v1是
 8列(无`rejected_low_quality`)，v2产出的是9列。`submit_oryza_besthit.sh
 merge`直接`head+tail`拼接多个样本的`summary.tsv`，**不要把v1和v2的
-summary.tsv混在一起跑merge**，会列错位。
+summary.tsv混在一起跑merge**，会列错位。**2026-08-11更新：这个风险已经
+不存在了**——16个样本已经全部统一在v2口径下重跑完毕（含此前4个v1样本，
+删除旧`.finished`标记后用v2重跑），见6.3节，`besthit_summary.tsv`现在
+16行全部是9列。
 
 **本地验证**（本机Mac，无服务器数据/无真实BAM时做的，隔离venv装pysam
 0.24.0）：手工构造了一个最小合成taxonomy(genus Oryza=4527，4个种：
@@ -481,24 +487,22 @@ rufipogon/sativa/nivara/longistaminata，加一个非Oryza外群物种)+对应BA
   93-97%之间)全部被正确判`REJECT/low_quality_pregate`，一致性校验
   (`input_reads == kept + rejected_nonoryza_better + rejected_no_oryza +
   rejected_low_quality + unclassified_reads`)照常通过。
-- **没有验证过的地方**：这一切都是合成数据，没有在真实BAM(131个数据库
-  的competitive mapping产出)上跑过，也没有拿v1已经产出的4个样本真实结果
-  跟v2重跑做过并排对比。genus-wide范围扩大后，实际retention rate(留存率)
-  大概率会变化(至少一部分之前被错误REJECT的genus-内非focal-3-species
-  read现在会被KEEP)，具体变化多少不知道。
+- **没有验证过的地方**：这一切都是合成数据。**2026-08-11更新：真实BAM
+  的验证已经完成**，见6.3节——16个样本全量v2跑批，一致性自检16/16通过，
+  4个此前跑过v1的样本v2留存率相对v1平均上移约2.3倍，方向和预期一致。
 
 **待办（下一个session）**：
-1. 下载新版本三个脚本(见下方下载命令)，先跑`check`确认环境正常
-2. 建议先对已经跑过v1的4个样本之一做`smoke`(1000-read子集)，对比v2和
-   v1的KEEP/REJECT分布差异，确认genus-wide改动的实际影响幅度符合预期
-   (不应该暴增，因为smoke test的分析显示"惜败"read的头号竞争对手基本都是
-   跟Oryza毫不相关的物种，genus内其他种在top20里几乎没出现过，见6节)
-3. 确认没问题后，可以考虑重新跑一遍这4个已完成的样本(删除`.finished`
-   标记后重跑，或者直接跑到新的`OUT_DIR`保留两份对比)，让"5bp可用"这类
-   已有结论建立在v2的口径上，避免v1/v2结果混用造成解读混乱
-4. 剩余样本直接用v2跑(`submit all`/`local all`默认行为已经是genus-wide)
+1. ~~下载新版本三个脚本，先跑`check`确认环境正常~~ **已完成（2026-08-11）**
+2. ~~建议先对已经跑过v1的4个样本之一做`smoke`~~ **已完成（2026-08-11）**，
+   见6.3节，v2对genus-wide的救回效果比smoke预测的更大，接手时不要用
+   smoke的1000条子集数字外推全量
+3. ~~确认没问题后，可以考虑重新跑一遍这4个已完成的样本~~ **已完成
+   （2026-08-11）**：删除了这4个样本v1的`.finished`标记后用v2重跑，16个
+   样本现在统一是v2口径，见6.3节
+4. ~~剩余样本直接用v2跑~~ **已完成（2026-08-11）**：`submit all`已经把
+   全部16个样本跑完并`merge`
 
-**下载命令**：
+**下载命令**（供再次校验环境/脚本版本用）：
 ```bash
 cd /home/scratch/yinmt202607/gene/scripts
 curl -fsSL -O https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/oryza-competitive-mapping/scripts/oryza_besthit/oryza_besthit_damage_filter.py
@@ -530,8 +534,8 @@ reference-forward 顺序的 (ref_base, read_base) 序列**倒序 + 互补**两�
 最近的 `rank=="species"` 祖先），每个 species 只保留最优 alignment，排序
 优先级：`adjusted_NM` 最小 → `NM` 最小 → `substitution_count` 最小 → `AS`
 最大 → reference 名称（稳定/可重复）。非 Oryza species 取前 `--top-n`
-（默认10）写入审计表；Oryza（`--oryza-taxids`，默认4529/4530/4536）**不占
-非 Oryza 的10个名额**，命中就必录。
+（默认10）写入审计表；Oryza（`--oryza-taxids`，v2默认动态解析整个genus，
+见5.1b）**不占非 Oryza 的10个名额**，命中就必录。
 
 判定（`best_nonoryza` / `best_oryza` 各自是排名第一的非Oryza/Oryza species）：
 
@@ -555,7 +559,7 @@ PCR duplicate，去重逻辑放在更下游。
 | `<sample>.besthit.top10_species.tsv.gz` | 审计表，一条 read 对应多行（非Oryza top10 + 必录的Oryza行），列：`read_name read_length species_hit_count top10_rank is_always_included species_taxid species_name reference_name NM substitution_count terminal_damage_count adjusted_NM AS` |
 | `<sample>.oryza_filter.decisions.tsv.gz` | 每 read 一行的最终判定，列：`read_name best_nonoryza_taxid best_nonoryza_name best_nonoryza_NM best_nonoryza_damage best_nonoryza_adjusted_NM best_oryza_taxid best_oryza_name best_oryza_NM best_oryza_damage best_oryza_adjusted_NM decision reason` |
 | `<sample>.besthit_oryza.fastq.gz` | 从候选 FASTQ 按 KEEP read name 抽出，每条只输出一次，序列/质量值原样保留 |
-| `<sample>.summary.tsv` | 单样本一行：`sample input_reads reads_with_alignment reads_with_oryza_hit kept_reads rejected_nonoryza_better rejected_no_oryza unclassified_reads`，脚本内部自查 `input_reads == kept + rejected_nonoryza_better + rejected_no_oryza + unclassified_reads`，不一致会非零退出（但这个文件本身仍会被写出，方便debug；`.finished` 不会被写） |
+| `<sample>.summary.tsv` | 单样本一行，v2是9列：`sample input_reads reads_with_alignment reads_with_oryza_hit kept_reads rejected_nonoryza_better rejected_no_oryza rejected_low_quality unclassified_reads`，脚本内部自查 `input_reads == kept + rejected_nonoryza_better + rejected_no_oryza + rejected_low_quality + unclassified_reads`，不一致会非零退出（但这个文件本身仍会被写出，方便debug；`.finished` 不会被写） |
 
 **`unclassified_reads` 的定义要注意**：包含两类，(a) 候选 FASTQ 里的 read 但
 BAM 里完全没有任何 alignment（bowtie2 `--no-unal` 直接没输出，这类 read
@@ -597,10 +601,10 @@ bash submit_oryza_besthit.sh merge
 ```
 
 可覆盖的环境变量（默认值见脚本头部）：`BAM_DIR` `FASTQ_DIR` `ACC2TAXID`
-`NODES` `NAMES` `ORYZA_TAXIDS`（默认 `"4529 4530 4536"`）`DAMAGE_WINDOW`
-（默认5）`TOP_N`（默认10）`OUT_DIR` `SLURM_PARTITION`（默认`comp`）
-`JOB_CPUS`（默认4）`JOB_MEM_MB`（默认16000，**未实测校准，见第7节待办4**）
-`JOB_TIME`（默认`04:00:00`）。
+`NODES` `NAMES` `ORYZA_TAXIDS`（v2默认空字符串=genus-wide，手动传值可复现
+v1窄范围）`DAMAGE_WINDOW`（默认5）`TOP_N`（默认10）`OUT_DIR`
+`SLURM_PARTITION`（默认`comp`）`JOB_CPUS`（默认4）`JOB_MEM_MB`（默认16000，
+**未实测校准，见第7节待办4**）`JOB_TIME`（默认`04:00:00`）。
 
 若 `check` 报 `import pysam` 失败，需要先在这个 `python3` 所在环境装 pysam。
 
@@ -638,7 +642,14 @@ alignment 这5种情况），在隔离 venv 里装 pysam 实测跑通全流程�
 文件"这类逻辑时要格外小心，优先考虑用 `--export` 显式传值，而不是依赖
 `$0`/`BASH_SOURCE` 在 job 里重新推导。
 
-## 6. 已经拿到的实际结果：smoke test 分析（LV6000619499，前1000条 reads）
+## 6. 已经拿到的实际结果：smoke test 分析（LV6000619499，前1000条 reads，v1）
+
+⚠️**2026-08-11提醒**：下面这一节是v1脚本对smoke子集(1000条)的分析，用来
+诊断"惜败"read的性质，结论(6.1/6.2)依然有效。但**smoke子集的留存率不能
+外推到全量样本**——同一样本全量跑出来的留存率跟smoke子集差异很大（v1：
+smoke 10.3% vs 全量5.00%；v2：smoke 13.6% vs 全量11.08%），大概率是候选
+FASTQ由shotgun+panel1+panel2三部分`cat`合并、前1000条集中在其中一个来源、
+构成不具代表性。**真实的16样本v2全量结果见6.3节，那才是可信的留存率**。
 
 ```
 sample        input_reads  reads_with_alignment  reads_with_oryza_hit  kept_reads  rejected_nonoryza_better  rejected_no_oryza  unclassified_reads
@@ -704,7 +715,8 @@ sativa代表基因组此前很可能被计入了下面的4529/rufipogon桶，全
 基因组则可能被计入了4530/sativa桶）。**下面这张表在修正前的具体数字（包括
 "sativa 111条"和"rufipogon 717条"这两个关键数字本身）都不可信，"sativa覆盖度
 偏低"这个结论需要重新统计后才能确认是否成立、成立到什么程度——不能再假设
-方向不变**。
+方向不变**。**2026-08-11：这条独立线（0.5/0.6节的`--apply`）依然没跑，跟
+besthit v2全量完成是两件独立的事，见0.6节待办**。
 
 Oryza 属18个已知种在 `all_wgs_asian_irgsp.acc2taxid` 里的 contig 数（用
 `nodes.dmp` 里 parent==4527 找到全部种级taxid，逐个数 acc2taxid 里精确匹配
@@ -773,6 +785,78 @@ angkor样本还是这个项目别的样本）？如果没有，可以从BAM直�
 （末端N个位置的C→T/G→A频率 vs 距末端距离），不需要跑完整mapDamage2。
 见7.5的具体诊断命令。
 
+### 6.3 【2026-08-11新增】v2正式批跑：16个样本全量besthit结果
+
+服务器已完成：①删除4个此前v1样本(LV6000619499/619917/620016/620032)的
+`.finished`标记及旧输出；②`submit_oryza_besthit.sh submit all`提交全部16
+个样本（v2默认genus-wide）；③全部作业完成后`merge`，产出统一9列的
+`besthit_summary.tsv`。**16/16样本内部一致性自检
+（`input_reads == kept + rejected_nonoryza_better + rejected_no_oryza +
+rejected_low_quality + unclassified_reads`）全部通过**（脚本保证，未通过
+不会写`.finished`）。
+
+完整结果（留存率 = kept_reads / input_reads）：
+
+```
+sample          input_reads  kept_reads  rejected_nonoryza_better  rejected_no_oryza  unclassified_reads  留存率
+LV6000619499    22062        2445        9187                      8734                1696                11.08%
+LV6000619917    29594        3135        12009                     11356               3094                10.59%
+LV6000620016    32713        3660        13828                     13299               1926                11.19%
+LV6000620032    49872        6121        20861                     20442               2448                12.28%
+LV6000620166    80536        10045       34042                     32429               4020                12.47%
+LV6000620172    48871        5609        20609                     20076               2577                11.48%
+LV6000654686    22662        2191        8282                      9202                2987                 9.67%
+LV6000654698    42624        4900        18537                     17248               1939                11.50%
+LV7008416272    32858        3701        16302                     11480               1375                11.27%
+LV7008416280    26893        3676        15220                     7127                870                 13.67%
+LV7008416294    15985        2076        9188                      3791                930                 12.99%
+LV7008416329    27967        3439        13288                     10394               846                 12.30%
+LV7008416339    37724        4857        19487                     12257               1123                12.88%
+LV7008416349    34288        6451        17497                     9278                1062                18.82%
+LV7008416379    45872        12924       20015                     11604               1329                28.18%
+LV7008416407    55867        7978        28299                     17847               1743                14.28%
+------
+合计            606388       83208       (rejected_low_quality全部为0，16样本一致)
+整体留存率(总kept/总input) = 83208/606388 = 13.72%
+```
+
+**核心发现1：genus-wide对全量数据的救回效果比smoke test(1000条子集)预测的
+大得多**。同一4个样本v1→v2对比：
+
+```
+sample          v1留存率(2026-08-07全量)  v2留存率(2026-08-11全量)  倍数
+LV6000619499    5.00%                     11.08%                    2.22x
+LV6000619917    5.00%                     10.59%                    2.12x
+LV6000620016    4.37%                     11.19%                    2.56x
+LV6000620032    4.92%                     12.28%                    2.50x
+```
+
+平均约**2.35倍**——而smoke test(1000条子集)当初预测的只是v1 10.3%→v2
+13.6%，约+32%，量级完全对不上。说明**smoke子集不能代表全量样本的留存率
+分布**（见6节开头新增的警告），以后要评估某个改动的实际影响，必须看全量
+结果，smoke test只适合快速验证"程序跑不跑得通、方向对不对"，不能用来
+估算幅度。
+
+**核心发现2：16个样本的留存率不是均匀的，多数在9.7%-14.3%之间，但两个
+样本明显偏高**——`LV7008416349`(18.82%)和`LV7008416379`(28.18%)，
+`LV7008416379`几乎是其余样本中位数(~12.3%)的2.3倍。**这是新的待查项，
+还没有解释**：
+- 可能是真实的生物学差异（比如这两个样本本身水稻DNA富集度更高、污染更少）
+- 也可能是候选FASTQ本身的构成有差异（比如panel捕获比例、read长度分布跟
+  其他样本不同）
+- 也可能是文库/测序批次层面的已知差异（需要查`angkor_robot_library.txt`
+  元数据，看这两个样本是不是同一批测序/同一个capture panel版本）
+- 目前**没有证据支持任何一种解释**，纯粹是从`besthit_summary.tsv`这张表
+  观察到的数字异常，下一步建议：①查这两个样本的元数据（测序批次/文库
+  类型/年代）跟其他14个样本是否有系统性差异；②如果怀疑数据质量问题，看
+  这两个样本mapping阶段的`reads_with_alignment/input_reads`比例是否也
+  偏高（如果连"有没有alignment"这一步都偏高，可能是原始候选FASTQ本身
+  水稻富集度就高，不是besthit逻辑的问题）；③不建议现在就假设是"好现象"
+  或"坏现象"，先确认原因
+
+**这次跑批没有暴露新的代码bug**——16个样本summary.tsv列数统一(9列)、
+自检全部通过、没有非零退出，说明5.6节记录的5个历史bug目前都没有复现。
+
 ## 7. 待确认的开放问题
 
 ### 7.1 ~~acc2taxid 里 Oryza 属各物种的实际覆盖度~~ 已回答，见6.1
@@ -833,7 +917,9 @@ Smoke test 日志里如果有 `[warn] N alignments had no usable SEQ/MD` 这一�
 `seff <job_id>` 或 `wc -l` nodes.dmp/names.dmp/acc2taxid 校准过实际占用——
 理论上 taxonomy dump（几百万taxid，3个dict）+ acc2taxid dict 全量常驻内存
 是这个脚本的内存大头，量级可能到GB级别，具体数字取决于这两个文件的真实大小，
-需要 `seff` 或 `wc -l` 实测。
+需要 `seff` 或 `wc -l` 实测。**2026-08-11：16样本正式批跑已经完成，可以
+顺手用`seff`查一下这16个job的实际内存/时间占用，校准`JOB_MEM_MB`/
+`JOB_TIME`默认值，属于低成本可以顺手做的诊断**。
 
 ### 7.5 `--damage-window=5` 是否偏窄——需要实测损伤衰减曲线
 
@@ -861,7 +947,11 @@ besthit，留存率(kept/input)分别为5.00%/5.00%/4.37%/4.92%，四个样本�
 一致，没有出现某个样本被5bp窗口明显"冤枉"的迹象——这是"5bp目前没出大问题"
 的数据支撑，用户据此判断"5bp暂时可用"，倾向于不再深挖这个问题，转向
 确认参考基因组体系（0.5/7.2节）和ecotype-pca-panel分支的标签来源问题。
-详见`docs/RESEARCH_ROADMAP.md`。
+详见`docs/RESEARCH_ROADMAP.md`。**2026-08-11更新**：这4个样本v2重跑后
+留存率整体上移到10.59%-12.28%（见6.3节），仍然彼此高度一致，"5bp暂时
+可用"这个方向性结论在v2口径下依然成立；但16个样本全量看，`416349`/
+`416379`两个新的离群样本(6.3节)跟5bp窗口是否有关还没排查，不能排除
+损伤窗口在这两个样本上表现不同。
 
 **参考对照**：师兄的类似脚本`--damage-end-bases`默认只有1bp（见5.1末尾的
 对比），比我们的5bp窄得多——如果他那边也在类似样本上跑出了合理结果，可能
@@ -954,68 +1044,56 @@ DTH8/Ghd8经典大片段缺失（3024份现代品种里5.4%携带这个缺失，
    到时候再具体设计怎么从探针捕获的reads里判定SV有无（比如split-read/
    discordant-pair证据，还是简单的深度骤降，取决于具体是哪种SV）。
 
-## 9. 给下一个接手者的具体待办（按优先级，2026-08-11更新后已重排）
+## 9. 给下一个接手者的具体待办（按优先级，2026-08-11当晚二次更新后已重排）
 
-0. 【2026-08-11，根因已查清，等用户重新验证下载，比下面所有条目都优先】
-   16个样本mapping已经全部跑完。开始实测5.1b节的besthit v2脚本时，服务器
-   `curl`下载新脚本直接报`curl: (22) The requested URL returned error: 404`
-   ——**根因不是路径/没重新下载，是`Inmpain/rice_adna_pipeline`这个仓库
-   当时是private的**：服务器上的`curl`是匿名请求，GitHub对private仓库的
-   raw文件、未认证请求一律返回404（不是403，故意这么设计避免暴露private
-   仓库是否存在）。用GitHub API查过仓库元数据，`"private": true`实锤。
-   **用户已经在GitHub网页把仓库改回public了**。接手时第一件事：
-   ```bash
-   cd /home/scratch/yinmt202607/gene/scripts
-   curl -fsSL -o oryza_besthit_damage_filter.py https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/oryza-competitive-mapping/scripts/oryza_besthit/oryza_besthit_damage_filter.py
-   curl -fsSL -o oryza_besthit_damage_filter_v1.py https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/oryza-competitive-mapping/scripts/oryza_besthit/oryza_besthit_damage_filter_v1.py
-   curl -fsSL -o submit_oryza_besthit.sh https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/oryza-competitive-mapping/scripts/oryza_besthit/submit_oryza_besthit.sh
-   chmod +x submit_oryza_besthit.sh
-   grep -c "genus" submit_oryza_besthit.sh oryza_besthit_damage_filter.py
-   ```
-   两个文件的grep计数都应该非0。确认无误后跑`bash submit_oryza_besthit.sh
-   check`，应该能看到`Oryza scope: whole genus, ORYZA_GENUS_TAXID=4527`
-   这行，再跑`smoke`（见5.1b节末尾的验证步骤），把smoke的
-   `summary.tsv`和`[config] Oryza scope: ...`那行日志贴回来。
-   **顺带教训**：如果之后还有别的仓库出现"明明路径对、服务器能连
-   github.com，但curl就是404"，先查一下这个仓库当前是不是private——
-   这条已经补进`github-repo-protocol`skill里（见该skill文件），下次
-   不用再从头排查一遍。
-1. 【0.6节，acc2taxid taxid修正】服务器dry-run已经跑过一次，
-   证实互换方向完全正确（详见0.6节的真实输出数字），但发现`irgsp.acc2taxid`
-   有一行表头会污染合并文件，脚本已修复（commit `2965348`）但**这个修复
-   本身还没在服务器上重新验证过**。步骤：①重新下载最新脚本；②再跑一次
-   dry-run，确认Step 2b显示`irgsp.acc2taxid 非数字taxid行数 = 1`且被正确
-   识别；③确认无误后`--apply`，完整重建`all_wgs_asian_irgsp.acc2taxid`；
-   ④**重新统计第6.1节的物种contig数表并重新评估"sativa覆盖度偏低"这个
-   结论是否仍然成立**（这次不是小幅数字修正，"sativa 111条/rufipogon 717条"
-   这两个数字本身可能是对调的，结论有可能反转，不能假设方向不变），更新
-   这份文档。
-2. 【次优先】7.5节：损伤窗口诊断——已有4个样本的初步数据支撑"5bp可用"，
-   如果用户认为证据已经够用，可以不再深挖，直接按当前参数继续跑剩余样本；
-   如果想更严谨验证，见7.5节的诊断脚本思路。
-3. 【诊断，优先级降低，非阻塞】7.2（`db/3k/wild/`物种身份，与main分支
+0. 【已完成，2026-08-11】v2版besthit已经在服务器真实数据上完成16个样本
+   的正式批跑（`submit all` + `merge`），16/16一致性自检通过，整体留存率
+   13.72%，具体结果、跟v1的对比、两个离群样本见6.3节。**下一个接手者不用
+   再做这一步，直接看下面1-3条**。
+
+1. 【当前最高优先级】6.3节发现的两个离群样本：`LV7008416349`(留存率
+   18.82%)和`LV7008416379`(28.18%)，明显高于其余14个样本(9.7%-14.3%)。
+   **原因未知，不要假设是好现象或坏现象**。建议先查这两个样本的元数据
+   （`angkor_robot_library.txt`里的测序批次/年代/文库类型），看跟其他
+   样本有没有系统性差异；再看它们mapping阶段`reads_with_alignment/
+   input_reads`的比例是否也偏高（如果是，说明候选FASTQ本身水稻富集度
+   就高，不是besthit逻辑的问题）。
+
+2. 【0.5/0.6节，acc2taxid taxid修正，跟besthit v2完成与否无关，独立并行】
+   服务器dry-run已经跑过一次，证实互换方向完全正确（详见0.6节的真实输出
+   数字），但发现`irgsp.acc2taxid`有一行表头会污染合并文件，脚本已修复
+   （commit `2965348`）但**这个修复本身还没在服务器上重新验证过**。步骤：
+   ①重新下载最新脚本；②再跑一次dry-run，确认Step 2b显示`irgsp.acc2taxid
+   非数字taxid行数 = 1`且被正确识别；③确认无误后`--apply`，完整重建
+   `all_wgs_asian_irgsp.acc2taxid`；④**重新统计第6.1节的物种contig数表并
+   重新评估"sativa覆盖度偏低"这个结论是否仍然成立**（这次不是小幅数字
+   修正，"sativa 111条/rufipogon 717条"这两个数字本身可能是对调的，结论
+   有可能反转，不能假设方向不变），更新这份文档。
+
+3. 【次优先】7.5节：损伤窗口诊断——4个原v1样本v2重跑后依然彼此高度一致，
+   支撑"5bp可用"这个方向性结论，但两个新离群样本(见待办1)跟损伤窗口是否
+   有关还没排查过，等待办1查完元数据层面的原因之后再看要不要顺带查一下
+   这两个样本的损伤衰减曲线。
+
+4. 【诊断，优先级降低，非阻塞】7.2（`db/3k/wild/`物种身份，与main分支
    `RESEARCH_ROADMAP.md`的P0第2条是同一个问题）、7.3（taxid rank校验）、
-   7.4（MD tag覆盖率完整log、`seff`内存实测）——都可以做，但不再挡着
-   best-hit往前走。
-4. 只有在7.5的损伤窗口问题排查/调整完之后，才回头评估要不要给
+   7.4（MD tag覆盖率完整log、`seff`内存实测，16样本正式批跑已经有job可以
+   顺手`seff`）——都可以做，但不再挡着best-hit往前走。
+
+5. 只有在7.5的损伤窗口问题排查/调整完之后，才回头评估要不要给
    `oryza_besthit_damage_filter.py` 加一个margin参数（当前硬编码`<=`，没有
    margin概念）——在没排除损伤窗口这个更根本的原因之前，先调margin是在
    错的层面上打补丁。
-5. 对剩余13个还在mapping队列里的样本，随mapping进度用 `submit_oryza_besthit.sh
-   submit all` 陆续跑besthit（这条不依赖1-4，可以随时做）。
+
 6. 8.1（参考基因组体系整理）——`asn720data`标签发现后优先级有所回升，
    但仍不是阻塞项。
+
 7. 8.2（selection scan）和8.3（57基因SV判生态型）都还没真正开始。8.3的
    覆盖度QC是个独立、低成本、能快速出结论的子任务，可以和上面几条并行推进；
    8.2依赖更完整的genotype pipeline，且同样会受损伤/参考质量问题影响，
-   优先级排在0.5/7.5之后。
-8. 【已完成，见5.1b】5.1末尾记录的师兄脚本对比已经落地成v2重写（genus-wide
-   Oryza范围+可选质量预筛），逐条取舍理由见5.1b节的表格。质量预筛的具体
-   阈值(`--min-best-similarity`/`--max-best-raw-nm`)如果想启用，仍然需要
-   在我们数据上摸索合适的值，目前默认关闭。
-9. 【当前新增，优先级紧随0.5/0.6之后】5.1b节：v2版besthit主脚本
-   （genus-wide Oryza范围）只在本地合成数据上验证过，**没有跑过真实BAM**。
-   下载新脚本后先`smoke`一个已有样本，对比v2和v1的KEEP/REJECT分布差异
-   是否符合预期（不应该暴增——smoke test数据显示"惜败"read的头号竞争者
-   基本都是跟Oryza无关的物种，见6节），确认没问题后再考虑要不要重新跑
-   已完成的4个样本（v1/v2的`summary.tsv`列数不同，不要混着`merge`）。
+   优先级排在1/3之后。
+
+8. 【已完成，见5.1b/6.3】师兄脚本对比已经落地成v2重写（genus-wide Oryza
+   范围+可选质量预筛），逐条取舍理由见5.1b节表格，真实数据验证见6.3节。
+   质量预筛的具体阈值(`--min-best-similarity`/`--max-best-raw-nm`)如果
+   想启用，仍然需要在我们数据上摸索合适的值，目前默认关闭。
