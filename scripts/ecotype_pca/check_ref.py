@@ -8,6 +8,16 @@ def open_maybe_gz(path):
 def parse_line(parts, fmt):
     if fmt == "bim":
         chrom, snpid, gd, pos, a1, a2 = parts[:6]
+    elif fmt == "vcf":
+        chrom, pos, snpid, ref, alt = parts[0], parts[1], parts[2], parts[3], parts[4]
+        # VCF's REF is the literal reference-genome base by construction (no A1/A2
+        # ambiguity like PLINK bim/EIGENSTRAT snp). Map ref->a2 so this reuses the
+        # same "a2_is_ref" counting path below: for a genuinely-matching coordinate
+        # system this should be ~100%, not ~90%. A low fraction here means chrom
+        # naming/coordinate system doesn't actually match irgsp.fa, not just an
+        # A1/A2 ordering quirk.
+        a1 = alt.split(",")[0]
+        a2 = ref
     else:
         snpid, chrom, gd, pos, a1, a2 = parts[:6]
     return chrom, pos, a1, a2
@@ -29,15 +39,25 @@ def main():
     raw_chrom_forms = set()
     sites = []
     skipped_chrom = set()
+    skipped_multiallelic = 0
 
     with open_maybe_gz(path) as f:
         for line in f:
-            parts = line.split()
-            if len(parts) < 6:
+            if line.startswith("#"):
                 continue
+            parts = line.split()
+            if fmt == "vcf":
+                if len(parts) < 5:
+                    continue
+                if "," in parts[4]:
+                    skipped_multiallelic += 1
+                    continue
+            else:
+                if len(parts) < 6:
+                    continue
             chrom, pos, a1, a2 = parse_line(parts, fmt)
             raw_chrom_forms.add(chrom)
-            if a1 in ("0", "N") or a2 in ("0", "N"):
+            if a1 in ("0", "N", ".") or a2 in ("0", "N", "."):
                 continue
             norm = normalize_chrom(chrom)
             try:
@@ -54,6 +74,8 @@ def main():
     print("raw chrom forms (sample):", sorted(raw_chrom_forms)[:20])
     if skipped_chrom:
         print("skipped chrom names:", skipped_chrom)
+    if fmt == "vcf" and skipped_multiallelic:
+        print("skipped multiallelic sites:", skipped_multiallelic)
 
     random.seed(42)
     sample = random.sample(sites, min(N, len(sites)))
@@ -75,8 +97,12 @@ def main():
             mismatches.append((chrom_fa, pos, a1, a2, ref_base))
 
     print("checked sites:", len(sample))
-    print("A2_is_ref:", n_a2_ref)
-    print("A1_is_ref:", n_a1_ref)
+    if fmt == "vcf":
+        print("VCF_REF_matches_irgsp(should be ~100%):", n_a2_ref, "/", len(sample))
+        print("VCF_REF_actually_matches_ALT_instead(suspicious):", n_a1_ref)
+    else:
+        print("A2_is_ref:", n_a2_ref)
+        print("A1_is_ref:", n_a1_ref)
     print("neither:", n_neither)
 
     if mismatches:
