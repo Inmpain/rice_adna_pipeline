@@ -9,9 +9,13 @@
 
 ## 0. 现状一句话总结
 
-**⚠️2026-08-11晚更新：Civáň数据服务器路径+完整性核对已完成，见1.3/5.6节
-结果**——三级祖源框架(第5节)现在可以真正动手写convertf脚本了，不再是
-"设计但没数据"的状态。
+**⚠️2026-08-11晚更新：PCA-C(Civáň)的convertf转换已经在服务器上跑完，
+成功**——`civan_snp.eigenstratgeno/.snp/.ind`已经产出，2,365,188个SNP、
+1056个样本，跟论文声称的数字精确吻合(这也顺带证实了VCF文件本身没有被
+截断，见5.6节)。**PCA-A(29M_3k)、PCA-C(Civáň)现在都有现成的EIGENSTRAT
+输入了，PCA-B(6.7M_720)本来就是EIGENSTRAT**——三个panel的格式转换全部
+完成，下一步是pseudo-haplotype调用脚本+smartpca参数(3.2节待办3)，见
+5.7节完整记录。
 
 **⚠️2026-08-11更新：三级祖源框架定案，Civáň 2019面板作为PCA-C桥接层
 插入到PCA-A/PCA-B之前，见第5节**（这是当前最新的设计层，第2节两个独立
@@ -147,12 +151,12 @@ fastq.gz`喂给PCA，可能混入其他15个Oryza种的reads，产生虚假投�
   或`db/3k/wild/`140+野生稻组装身份(见besthit分支`ORYZA_BESTHIT_HANDOFF.md`
   第7.2节的老问题)的权威说明文件。已请用户`cat`出内容。
 
-### 1.3 Civáň 2019 统一栽培-野生面板（PCA-C，2026-08-11服务器路径与
-完整性已核对，见5.6节完整结果）
+### 1.3 Civáň 2019 统一栽培-野生面板（PCA-C，2026-08-11 convertf转换
+已完成，见5.6/5.7节完整记录）
 
 - 论文引用与数据集DOI：main分支`docs/LITERATURE.md`第2.2节（已用WebFetch/
   WebSearch核实，非转述）
-- **确切服务器路径（2026-08-11确认）**：`/home/scratch/yinmt202607/db/paper1/`
+- **确切服务器路径**：`/home/scratch/yinmt202607/db/paper1/`
   ```
   sativa-rufipogon_SNPs.vcf.gz    # 核SNP矩阵，VCF格式，bgzip压缩
   1825_Oryza_cpDNA.fastq          # 叶绿体基因组集，⚠️真FASTQ格式(见下)
@@ -160,19 +164,28 @@ fastq.gz`喂给PCA，可能混入其他15个Oryza种的reads，产生虚假投�
   Table_S1.csv                    # 样本元数据(物种/群体/来源等)
   Table_S2.csv                    # 叶绿体组装质控表(测序深度/覆盖度等)
   Table_S3.csv                    # qSH1/qSD1-2/SPS1三个驯化位点单倍型频率
+  civan_snp.bed/.bim/.fam         # plink2从VCF转出的中间PLINK格式
+  civan_snp.eigenstratgeno/.snp/.ind  # 【PCA-C直接输入】convertf最终产出
   ```
-- 核SNP矩阵：1,056份样本(595栽培[283 indica/154 japonica/124 aus/34
-  aromatic] + 461野生)，2,365,188个双等位SNP，坐标系IRGSP-1.0，格式VCF
-  (需要转EIGENSTRAT，用convertf，流程同1.1节29M_3k那次，注意坑点见
-  3.2节step2历史记录)。**坐标系已核实一致**：`check_ref.py`新增VCF模式
-  (见5.6节)对200个位点抽查，REF列与`irgsp.fa`对应位置碱基**200/200完全
-  匹配**——VCF的REF列本来就该是参考基因组本身，跟29M_3k/720那种A1/A2
-  方向模糊的情况不同，这个100%匹配是"坐标系统真的对得上"的强证据，不是
-  运气。**总SNP行数尚未核实**——`zcat | grep -vc "^#"`在服务器上跑了
-  两次都因为文件太大被用户手动中断(Ctrl-C)，没拿到确切总行数去对照
-  论文声称的2,365,188，这个核对不阻塞后续工作(坐标系已经用抽样验证过)，
-  但写convertf脚本时如果转换后的SNP数量跟2,365,188差距很大，要回头查
-  是不是文件本身不完整。
+- 核SNP矩阵：**1,056份样本(595栽培[283 indica/154 japonica/124 aus/34
+  aromatic] + 461野生)，2,365,188个双等位SNP**，坐标系IRGSP-1.0，格式VCF。
+  **坐标系已核实一致**：`check_ref.py`的VCF模式对200个位点抽查，REF列与
+  `irgsp.fa`对应位置碱基**200/200完全匹配**——VCF的REF列本来就该是参考
+  基因组本身，跟29M_3k/720那种A1/A2方向模糊的情况不同，这个100%匹配是
+  "坐标系统真的对得上"的强证据。**VCF→EIGENSTRAT转换已在服务器上跑完
+  （2026-08-11晚）**：convertf不支持VCF输入(README确认，见5.6节)，走的是
+  `VCF→(plink2 --vcf --make-bed)→PLINK bed/bim/fam→(convertf)→EIGENSTRAT`
+  两步路径，脚本是`scripts/ecotype_pca/convert_civan_vcf.sh`+
+  `par.CIVAN.PLINK.EIGENSTRAT`。**最终产出2,365,188个SNP、1056个样本，
+  跟论文声称的数字完全精确吻合**——这也**间接证实了VCF文件本身没有被
+  截断**（之前"总行数因Ctrl-C中断没确认"这个悬而未决的问题，现在可以
+  认为已经解决：如果文件被截断，转换出的SNP数不可能刚好精确等于论文
+  声称的数字）。转换过程中出现过一条`all individuals set ignore...
+  resetting all individuals...`的警告，最终`indivs: 1056`(全量，没有
+  样本被误删)，见5.6节对这条警告的解释——是PLINK`.fam`第6列phenotype
+  默认值(-9)触发的convertf已知解析行为，convertf自己检测到异常并恢复，
+  不是数据丢失，下次转换类似来源的PLINK文件遇到同样警告不用紧张，但
+  最终产出的`indivs`数字仍然要核对一遍。
 - 叶绿体基因组集：1,825个，独立于核基因组的母系谱系证据层。**⚠️格式是
   真FASTQ，不是FASTA**（`grep -c "^>"`返回0是符合预期的，因为FASTQ用`@`
   不用`>`；`head`看到`@ERR605276 chloroplast, complete genome`这样的
@@ -290,18 +303,19 @@ Civáň统一面板先给出"栽培/野生/混合"这个粗判断，两边不再
 - **Civáň VCF核SNP矩阵(200/200抽查)**：**REF列与irgsp.fa 200/200完全
   匹配**，见1.3/5.6节。这是三个panel里坐标系验证最干净的一个。
 
-### 3.2 待办(按优先级，2026-08-11更新)
+### 3.2 待办(按优先级，2026-08-11晚更新)
 
-0. **【已完成，2026-08-11晚】确认Civáň 2019数据在服务器上的确切路径，
-   并核对下载完整性**——路径、文件清单、坐标系核对、叶绿体FASTQ格式确认、
-   记录数核对，完整结果见1.3/5.6节。**未完全核实的一点**：VCF总行数
-   (应接近2,365,188)因文件太大、用户两次Ctrl-C中断没拿到确切数字，不
-   阻塞下一步，但convertf跑完后如果SNP数量差距很大要回头查。
-0c. **【新的最优先待办】写Civáň VCF→EIGENSTRAT的convertf脚本**——
-    路径/格式细节都已确认(见1.3节)，可以直接开始，参考1.1节29M_3k那次
-    convertf的经验(尤其"convertf靠文件后缀识别格式，不是`inputformat:`
-    参数"这个坑)，但VCF对应的convertf格式关键字/后缀要求跟PLINK不同，
-    写脚本前先查一遍convertf README确认。
+0. **【已完成】确认Civáň 2019数据在服务器上的确切路径，并核对下载
+   完整性**——详见1.3/5.6节。
+0c. **【已完成，2026-08-11晚】写并跑通Civáň VCF→EIGENSTRAT转换**——
+    `scripts/ecotype_pca/convert_civan_vcf.sh`+`par.CIVAN.PLINK.EIGENSTRAT`，
+    走`VCF→plink2→PLINK→convertf→EIGENSTRAT`两步路径(convertf本身不
+    支持VCF，见5.6节)，`civan_snp.eigenstratgeno/.snp/.ind`已产出，
+    2,365,188 SNP/1056样本精确匹配论文数字，详见1.3/5.7节。
+0d. **【新的最优先待办】三个panel的EIGENSTRAT格式转换现在全部完成
+    （29M_3k/720/Civáň），下一步是3.2节待办3——pseudo-haplotype调用
+    脚本+smartpca `-lsqproject`参数**，这是三条PCA真正跑出结果之前
+    最后一块缺失的拼图。
 0b. **【同等优先级】去besthit分支核实"按taxonomic tier分级输出
     KEEP集合"这条建议(第0节末尾/第4节末尾)是否已经实施**——如果还没有，
     需要决定是在besthit分支加这个分级逻辑，还是本分支自己对
@@ -322,11 +336,17 @@ Civáň统一面板先给出"栽培/野生/混合"这个粗判断，两边不再
    (`docs/references/3k_rice_genomes_project/rice_line_metadata_20141029.xlsx`，
    main分支)里的IND/AUS/ARO/TRJ/TEJ/ADM标准亚群标签，**不需要再等
    `OrA-OrF`**，这条相对简单，可以先做。
+2c. **Civáň PCA-C的群体标签**——`civan_snp.ind`的样本群体列目前是plink2
+    从VCF phenotype/FID列继承来的占位符(见5.6节ignore警告的成因)，
+    真实的栽培/野生/亚群分类需要从`Table_S1.csv`(样本元数据，1.3节)
+    按样本ID匹配过去，跟待办1/2是同一类工作，可以并行做。
 3. **三条PCA各自的pseudo-haplotype调用脚本 + smartpca具体参数**（尤其
    `-lsqproject`相关配置，以及第5.2节新增的shrinkage校正downsampling）
    都还没写。PCA-A(29M_3k)现在就可以开始写，不用等标签问题解决——投影/
    建PC空间不需要标签，标签只在最后解读阶段才用得到；PCA-B(6.7M_720)、
-   PCA-C(Civáň)同理，标签核实(待办1)可以跟脚本编写并行推进。
+   PCA-C(Civáň)同理，标签核实(待办1/2c)可以跟脚本编写并行推进。**三个
+   panel的EIGENSTRAT输入现在都已就绪(见0c/1.1/1.2)，这条待办不再有任何
+   前置阻塞，是当前唯一的关键路径**。
 4. **核查`asn720.6m.ind`与`NB_final_snp.ind`之间的样本ID重叠**(即
    `CX382`疑似重复案例)——去掉`_merged`后缀后系统性比对两份样本列表，
    确认重叠规模。优先级较低，不阻塞主线，但正式产出结果前必须处理。
@@ -391,13 +411,8 @@ Civáň面板的2,365,188个SNP同时覆盖栽培(indica/japonica/aus/aromatic)�
 说不清楚谁更可信的结论要扎实。这一条**采纳**，作为当前设计的最新层，
 写进第2节顶部。
 
-**需要做的技术工作**：Civáň面板是VCF格式，需要convertf转EIGENSTRAT
-(流程同1.1节29M_3k那次，注意坑点：convertf靠文件后缀识别格式，不是
-`inputformat:`参数；具体见3.2节step2历史记录，虽然那条已经是废弃路径，
-但踩过的坑对VCF转换同样适用，VCF转EIGENSTRAT convertf有独立的格式关键字
-和后缀要求，不能直接照抄PLINK那套后缀，用之前先查convertf README确认
-VCF对应的`inputformat`/文件后缀要求，不要想当然)。**2026-08-11更新**：
-路径/格式/坐标系已确认(见1.3/5.6节)，这是3.2节新的最优先待办(0c)。
+**需要做的技术工作**：Civáň面板是VCF格式，需要convertf转EIGENSTRAT——
+**已完成，见1.3/5.6/5.7节**。
 
 ### 5.2 对"每个古样本各自建一套PCA"这条批评的技术核对（部分修正）
 
@@ -489,8 +504,7 @@ Civáň论文Table S3给出`qSH1`(落粒)/`qSD1-2`(休眠/株高)/`SPS1`(穗粒�
 之后是`1/2/.../12`裸数字染色体名(跟29M_3k/720两个panel命名方式一致，
 不需要额外转换)，样本列包含`B0xx`(3K RGP风格)/`CX0xx`/`ERR0685xx`(ENA
 测序run号)/`IRIS_313-xxxx`(IRIS ID)/`W0xxx`(野生稻)等多种ID风格混合，
-跟720 panel"多来源拼合"的样本ID观察(1.2节)是同一种模式。**总行数未确认**
-(见下)。
+跟720 panel"多来源拼合"的样本ID观察(1.2节)是同一种模式。
 
 **3. 坐标系核对**：用升级后的`check_ref.py`(新增`vcf`模式，见commit
 `ac8a8eb`，直接读VCF的REF列跟irgsp.fa比对，不需要像PLINK/EIGENSTRAT那样
@@ -498,12 +512,10 @@ Civáň论文Table S3给出`qSH1`(落粒)/`qSD1-2`(休眠/株高)/`SPS1`(穗粒�
 mismatch**——这是三个panel里坐标系验证结果最干净的一次，不像720那样有
 91.5%的模糊匹配空间。
 
-**4. VCF总行数**：**未确认**。用户跑了两次
-`zcat sativa-rufipogon_SNPs.vcf.gz | grep -vc "^#"`，文件太大，都用
-Ctrl-C手动中断了，没等到最终数字去对照论文声称的2,365,188。不阻塞后续
-(坐标系已经用抽样方式独立验证过)，但写convertf脚本、拿到转换后的SNP
-数量时，如果跟2,365,188差距很大，要回头确认是不是文件本身不完整/被
-截断。
+**4. VCF总行数**：**间接确认，见5.7节**。用户直接跑`zcat|grep -vc "^#"`
+两次都因文件太大被Ctrl-C中断，没拿到确切数字，但5.7节记录的convertf转换
+最终产出2,365,188个SNP，跟论文声称的数字精确吻合，等同于间接确认了VCF
+文件完整、没有被截断。
 
 **5. 叶绿体基因组集格式**：`1825_Oryza_cpDNA.fastq`，**真FASTQ格式**——
 `head`看到`@ERR605276 chloroplast, complete genome`风格的header、序列
@@ -522,4 +534,48 @@ Ctrl-C手动中断了，没等到最终数字去对照论文声称的2,365,188�
 (85条数据，qSH1/qSD1-2/SPS1单倍型频率表，量级合理)。这些差异都记在
 1.3节，不阻塞convertf脚本开发。
 
-**结论：可以开始写convertf脚本了**，见3.2节待办0c。
+**7. convertf不支持VCF输入**：`cat CONVERTF/README`确认convertf只支持
+5种格式(ANCESTRYMAP/EIGENSTRAT/PED/PACKEDPED/PACKEDANCESTRYMAP)，没有
+VCF，也**没有`inputformat:`这个参数**(这一点跟29M_3k那次的PACKEDPED
+坑是同一类问题的再次确认——convertf的输入格式判断完全靠文件后缀，不靠
+任何显式参数)。服务器上只有plink2(无plink1.9)，`which plink2`确认
+`~/.local/mamba/snakemake/bin/plink2`，版本`v2.0.0-a.6.9LM`。
+
+### 5.7 Civáň VCF→EIGENSTRAT转换：跑通结果（2026-08-11晚，已完成）
+
+**转换路径**：`VCF → (plink2 --vcf --max-alleles 2 --vcf-half-call
+missing --chr-set 12 no-xy no-mt --make-bed) → PLINK bed/bim/fam →
+(convertf, symlink .fam→.pedind，.bim原生支持不用改名) → EIGENSTRAT`。
+脚本：`scripts/ecotype_pca/convert_civan_vcf.sh` +
+`par.CIVAN.PLINK.EIGENSTRAT`（commit `cef87d5`/`f59a966`）。
+
+**实测结果**：
+```
+before compress: snps: 2365188 indivs: 1056
+after compress:  snps: 2365188 indivs: 1056
+numvalidind: 1056  maxmiss: 1056001
+numsnps output: 2365188
+##end of convertf: 442.305 seconds cpu  2100.630 Mbytes in use
+```
+**2,365,188个SNP、1056个样本，跟论文声称的数字完全精确吻合**——没有任何
+SNP或样本在转换过程中丢失。运行时间442秒CPU(~7.4分钟)，远比29M_3k那次
+(4.4小时)快，符合"这份VCF量级小得多"的预期。
+
+**转换过程中出现过的警告(已确认无害)**：
+```
+all individuals set ignore.  Likely input problem (col 6)
+resetting all individuals...
+```
+这是PLINK`.fam`文件第6列(phenotype)默认值是`-9`(未指定表型)触发的
+convertf已知解析行为——convertf检测到"全部样本都被判定为ignore"这种
+明显异常的情况，判断是输入问题而不是用户真的想丢弃全部样本，自动重置
+恢复。最终`indivs: 1056`是全量，没有样本被误删，`numvalidind: 1056`
+也确认了这一点。**这条警告本身不需要处理**，但以后遇到同样警告时，
+务必像这次一样核对最终输出的`indivs`数字是不是符合预期全量，不能只看
+警告文字就恐慌，也不能完全无视——核对数字才是关键。
+
+**结论**：PCA-C的EIGENSTRAT输入(`civan_snp.eigenstratgeno/.snp/.ind`)
+已经就绪。三个panel(29M_3k/6.7M_720/Civáň)现在**全部**有可直接喂给
+`smartpca`的EIGENSTRAT格式数据了。下一步是3.2节待办3——写
+pseudo-haplotype调用脚本和`smartpca -lsqproject`参数，这是当前唯一
+剩下的、真正阻塞"跑出结果"的关键路径。
