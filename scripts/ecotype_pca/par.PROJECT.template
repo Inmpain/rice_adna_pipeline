@@ -1,0 +1,37 @@
+# Template smartpca parameter file for lsqproject-based ecotype PCA.
+# Copy this to par.<PANEL>.PROJECT (e.g. par.29M_3k.PROJECT) and fill in
+# the bracketed placeholders once merge_ancient_into_panel.py has been
+# run for that panel.
+#
+# HOW THIS ACHIEVES "fixed modern eigenvectors, ancients projected onto
+# them without influencing them" (see ECOTYPE_PCA_PANEL.md section 2/5.2):
+# smartpca computes eigenvectors ONLY from individuals whose population
+# label (last column of indivname's .ind file) appears in poplistname.
+# Every individual whose label is NOT in poplistname is still included
+# in the output PC coordinates (via lsqproject) but does not affect the
+# eigenvector calculation. merge_ancient_into_panel.py's
+# --ancient-poplabel (default "Ancient") is the label used for every
+# ancient sample -- it must be absent from poplistname's file, or those
+# samples would incorrectly help build the axes instead of being
+# projected onto them.
+#
+# !!! BLOCKED ON: poplistname's file content depends on real modern
+# population labels being merged into each panel's .ind file first --
+# this is ECOTYPE_PCA_PANEL.md 3.2 items 1 (720's OrA-OrF from
+# asn720data/asn720.pop.fam), 2 (29M_3k's IND/AUS/ARO/TRJ/TEJ/ADM from
+# the 3K RGP metadata xlsx), and 2c (Civan's labels from Table_S1.csv)
+# -- none of which are done yet as of this commit. Do not run smartpca
+# with this template until the corresponding panel's real population
+# labels are merged in and poplistname.<PANEL>.txt has been generated
+# from them (one population label per line, exactly as it appears in
+# the .ind file's last column).
+
+genotypename:    [PANEL].merged.eigenstratgeno
+snpname:         [PANEL].snp
+indivname:       [PANEL].merged.ind
+evecoutname:     [PANEL].evec
+evaloutname:     [PANEL].eval
+poplistname:     poplistname.[PANEL].txt
+lsqproject:      YES
+numoutevec:      10
+numoutlieriter:  0
