@@ -27,25 +27,60 @@ DESIGN NOTES (read before trusting output):
    widely-used way to sidestep this entirely without needing a
    damage-curve-specific read-trimming parameter (this project's own
    damage window calibration is still an open question -- see besthit
-   branch ORYZA_BESTHIT_HANDOFF.md 7.5). Pass --no-transversions-only
-   only if you have a specific reason to trust the damage profile at
-   transition sites for a given sample/panel.
+   branch ORYZA_BESTHIT_HANDOFF.md 7.5).
+   OPERATIONAL NOTE (2026-08-12, see docs/ECOTYPE_PCA_EXECUTION_PLAN.md):
+   the intended primary/sensitivity split is to run this script TWICE
+   per sample per panel -- once with the default (TV = transversion-only,
+   the primary result) and once with --no-transversions-only (ALL =
+   every biallelic site called, a sensitivity check). "ALL" here still
+   means "no damage-aware trimming is applied", not "damage-corrected" --
+   this project has no read-trimming/damage-rescaling step yet, so ALL
+   should be read as "less conservative", not as "safe because trimmed".
+   If TV and ALL give the same population call for a sample, that
+   agreement is the actual evidence of robustness; if a given site's
+   functional interest depends on a transition (e.g. DROT1, a C/T SNP --
+   see docs/ECOTYPE_PCA_EXECUTION_PLAN.md's ecotype-panel section), it
+   can only ever appear in the ALL track, never in TV.
 
-4. !!! REF/ALT COLUMN CONVENTION MUST BE VERIFIED PER PANEL BEFORE
-    TRUSTING REAL OUTPUT !!! This script follows the EIGENSOFT
-    CONVERTF/README's literal definition: .snp file column 5 = reference
-    allele, column 6 = variant/alt allele, and genotype 0 = zero copies
-    of the reference (i.e. homozygous alt), 2 = two copies of reference
-    (homozygous ref). ECOTYPE_PCA_PANEL.md section 3.1 already found
-    that this convention was NOT perfectly clean for one of our three
-    panels (6.7M_720 matched the expected direction in only 183/200
-    spot-checked sites, 91.5%, not 100%) -- so before running this
-    script for real on a given panel, re-run check_ref.py in its
-    existing "snp" mode against that panel's .snp file and confirm which
-    column is actually acting as reference for that specific panel. If
-    a panel's convention is flipped, use --swap-ref-alt to invert the
-    0/2 assignment for that run rather than silently trusting the
-    column order.
+4. REF/ALT COLUMN CONVENTION MUST BE VERIFIED PER PANEL BEFORE TRUSTING
+   REAL OUTPUT. This script follows the EIGENSOFT CONVERTF/README's
+   literal definition: .snp file column 5 = reference allele, column 6 =
+   variant/alt allele, and genotype 0 = zero copies of the reference
+   (i.e. homozygous alt), 2 = two copies of reference (homozygous ref).
+
+   !!! DO NOT decide --swap-ref-alt from check_ref.py's FASTA-match rate
+   alone !!! (2026-08-12 correction, see docs/ECOTYPE_PCA_EXECUTION_PLAN.md
+   P0-1 -- an earlier version of this note conflated two different
+   questions). check_ref.py's "snp" mode answers "does .snp column 5 (or
+   6) match the base actually present in irgsp.fa at that position" --
+   that is a statement about how the panel's source data labeled REF/ALT
+   relative to the genome. It is NOT the same question as "does this
+   script's 0/2 encoding match how the panel's OWN .eigenstratgeno matrix
+   already encodes its existing (modern) individuals at that site" --
+   which is the thing that actually matters here, because
+   merge_ancient_into_panel.py concatenates this script's output as new
+   columns directly onto that same matrix. A panel whose source data used
+   an unusual REF/ALT labeling relative to the genome can still be 100%
+   internally self-consistent (this script's reading of column 5/6 can
+   still agree with the modern genotype matrix) -- FASTA mismatch alone
+   does not prove a real 0/2 encoding bug, and a high FASTA match rate
+   does not prove the absence of one either.
+
+   The authoritative check is a LEAVE-ONE-OUT SIMULATION using a modern
+   sample already in the panel with a known population label (see
+   docs/ECOTYPE_PCA_EXECUTION_PLAN.md Phase 0.5): mask that sample down to
+   an ancient sample's covered-site pattern, run this script's same
+   read-simulation/allele-matching logic against it, merge the result in
+   as an extra column, and confirm it still lsqprojects back near its own
+   known population. If the 0/2 encoding here disagreed with the panel's
+   existing matrix, this simulated individual would systematically
+   project AWAY from its true population (often toward whichever group is
+   genotypically "opposite" at those sites), not merely with more noise --
+   that is a stronger and more direct signal than any FASTA spot-check.
+   Use --swap-ref-alt only once that simulation (or an equivalent direct
+   comparison against the panel's own already-known genotypes for a
+   sample it contains) has actually shown a flip is needed for a given
+   panel -- not as a default response to check_ref.py's percentage.
 
 Usage:
   python3 pseudo_haploid_call.py \
@@ -75,9 +110,13 @@ def parse_args():
     p.add_argument("--min-mapq", type=int, default=20)
     p.add_argument("--min-baseq", type=int, default=20)
     p.add_argument("--no-transversions-only", action="store_true",
-                    help="disable default transition-SNP exclusion (see docstring point 3 -- not recommended without a reason)")
+                    help="disable default transition-SNP exclusion (see docstring point 3 -- "
+                         "this is the 'ALL' sensitivity track, run in addition to the default "
+                         "'TV' track, not instead of it)")
     p.add_argument("--swap-ref-alt", action="store_true",
-                    help="invert which .snp column (5 vs 6) is treated as the reference allele (see docstring point 4)")
+                    help="invert which .snp column (5 vs 6) is treated as the reference allele "
+                         "-- only pass this after a leave-one-out simulation has actually shown "
+                         "it's needed for this panel, see docstring point 4")
     return p.parse_args()
 
 
@@ -137,7 +176,15 @@ def main():
     cov = build_coverage_index(args.bam, args.min_mapq, args.min_baseq)
     sys.stderr.write(f"[pseudo_haploid_call] {len(cov)} covered positions in BAM\n")
 
-    n_total = n_transition_skipped = n_no_allele_info = n_uncovered = n_called = 0
+    # NOTE (2026-08-12): n_no_coverage and n_allele_mismatch used to be
+    # merged into a single n_uncovered counter, which made it impossible
+    # to tell "this site simply had no reads" apart from "reads existed
+    # but matched neither panel allele" (sequencing error / third allele /
+    # residual damage the transversion filter didn't catch) -- these are
+    # different diagnostic signals and are now reported separately. See
+    # docs/ECOTYPE_PCA_EXECUTION_PLAN.md's reporting-field list.
+    n_total = n_transition_skipped = n_no_allele_info = 0
+    n_no_coverage = n_allele_mismatch = n_called = 0
 
     with open(args.panel_snp) as fin, open(args.out, "w") as fout:
         for line in fin:
@@ -167,7 +214,7 @@ def main():
 
             reads = cov.get((contig, pos))
             if not reads:
-                n_uncovered += 1
+                n_no_coverage += 1
                 fout.write("9\n")
                 continue
 
@@ -181,13 +228,17 @@ def main():
             else:
                 # neither known allele -- sequencing error / third allele /
                 # residual damage the transversion filter didn't catch.
-                # Treat as missing rather than guessing.
+                # Treat as missing rather than guessing. Distinct from
+                # n_no_coverage: reads exist here, they just don't match
+                # either panel allele.
+                n_allele_mismatch += 1
                 fout.write("9\n")
-                n_uncovered += 1
 
+    n_uncovered = n_no_coverage + n_allele_mismatch
     sys.stderr.write(
         f"[pseudo_haploid_call] total={n_total} transition_skipped={n_transition_skipped} "
-        f"no_allele_info={n_no_allele_info} called={n_called} "
+        f"no_allele_info={n_no_allele_info} no_coverage={n_no_coverage} "
+        f"allele_mismatch={n_allele_mismatch} called={n_called} "
         f"missing={n_total - n_called}\n"
     )
     if args.report:
@@ -196,6 +247,9 @@ def main():
             r.write(f"total_panel_snps\t{n_total}\n")
             r.write(f"transition_skipped\t{n_transition_skipped}\n")
             r.write(f"no_allele_info\t{n_no_allele_info}\n")
+            r.write(f"no_coverage\t{n_no_coverage}\n")
+            r.write(f"allele_mismatch\t{n_allele_mismatch}\n")
+            r.write(f"uncovered_total\t{n_uncovered}\n")
             r.write(f"called\t{n_called}\n")
             r.write(f"missing\t{n_total - n_called}\n")
 

@@ -14,13 +14,43 @@ set -euo pipefail
 #   per that doc's section 5.2) -- deduplication happens here, since this
 #   is that downstream step.
 #
-# aDNA-appropriate bwa aln settings (-l 1024 disables seeding since it's
-# longer than any read, -n 0.01 relaxes the edit-distance threshold to
-# tolerate damage-derived mismatches -- standard literature settings for
-# ancient DNA mapping, e.g. Schubert et al. 2012). NOTE: these are NOT
-# verified against this project's own main-pipeline BWA parameters in
-# scripts/server_originals/ -- if you want exact consistency with that
-# pipeline instead of literature defaults, check those scripts first.
+# 2026-08-12 hardening (see docs/ECOTYPE_PCA_EXECUTION_PLAN.md P0-2): this
+# revision aligns the mapping/filtering/dedup chain with the project's
+# main pipeline (scripts/server_originals/mapping.sh) instead of a
+# from-literature reconstruction that had drifted from it:
+#   - bwa aln -l 1024 -n 0.01 -o 2 is UNCHANGED -- this already matched
+#     mapping.sh exactly, confirmed by direct diff, so the previous
+#     "not verified against main pipeline" caveat is removed.
+#   - samtools view -bh -F 0x904 is now applied right after samse, same
+#     position as mapping.sh -- drops unmapped/secondary/supplementary
+#     alignments before sorting, not left for a later ad-hoc read-count
+#     fix. (bwa samse without -a does not itself emit secondary/
+#     supplementary records, so in practice this mainly drops unmapped
+#     reads here, but the filter is applied at the same pipeline stage
+#     as the main pipeline for consistency and future-proofing.)
+#   - dedup now goes through the same collate -> fixmate -m -> sort ->
+#     markdup chain as mapping.sh, instead of running markdup directly
+#     on a coordinate-sorted BAM with fixmate left as an "add it if it
+#     errors" fallback. fixmate needs mate-score info that a plain
+#     coordinate sort does not guarantee is present/correct for markdup
+#     to make optimal duplicate-of-pair decisions; for single-end data
+#     this matters less than for paired-end, but there is no reason to
+#     run the riskier path when the safe one costs one extra sort pass.
+#   - DELIBERATE remaining difference from mapping.sh: markdup here does
+#     NOT use -r (does not remove duplicates), only flags them. This is
+#     intentional, not an oversight -- pseudo_haploid_call.py already
+#     filters flagged duplicates at pileup time (aln.is_duplicate check),
+#     and the Phase 0 IRGSP coverage census (see execution plan) wants
+#     duplicate-rate visible in the BAM as a QC signal, not silently
+#     removed upstream. If a future consumer needs duplicates physically
+#     removed, add -r at the call site rather than changing this default.
+#   - the per-sample summary line now reports mapped-primary reads via
+#     samtools view -c -F 4 (excludes unmapped; matches what "mapped
+#     reads" should mean) instead of a bare `samtools view -c` that
+#     could include unmapped records depending on BAM state, plus
+#     separate MAPQ>=30 (primary SNP-calling threshold, matches main
+#     pipeline's q30 filter step) and MAPQ>=20 (sensitivity-analysis
+#     threshold, see ECOTYPE_PCA_PANEL.md / execution plan) counts.
 #
 # Usage: bash map_besthit_to_irgsp.sh <besthit_fastq_dir> <irgsp_fa> <out_dir> <sample1> [sample2 ...]
 
@@ -38,23 +68,24 @@ for sample in "$@"; do
     continue
   fi
 
-  echo "[map] $sample: bwa aln + samse"
+  echo "[map] $sample: bwa aln + samse + filter (-F 0x904) + sort"
   bwa aln -l 1024 -n 0.01 -o 2 -t 4 "$IRGSP_FA" "$fq" > "$OUT_DIR/${sample}.sai"
   bwa samse "$IRGSP_FA" "$OUT_DIR/${sample}.sai" "$fq" \
+    | samtools view -@ 4 -bh -F 0x904 - \
     | samtools sort -@ 4 -o "$OUT_DIR/${sample}.sorted.bam" -
   rm -f "$OUT_DIR/${sample}.sai"
 
-  echo "[dedup] $sample: samtools markdup"
-  echo "  NOTE: running markdup directly on coordinate-sorted single-end"
-  echo "  data without a prior fixmate pass -- this is the common SE"
-  echo "  shortcut, but if samtools errors/warns about missing mate"
-  echo "  score info, insert 'samtools collate -O | samtools fixmate -m'"
-  echo "  before the sort step above and re-run."
-  samtools markdup -@ 4 "$OUT_DIR/${sample}.sorted.bam" "$OUT_DIR/${sample}.besthit_oryza.irgsp.bam"
+  echo "[dedup] $sample: collate | fixmate -m | sort | markdup (flag only, not -r)"
+  samtools collate -@ 4 -O "$OUT_DIR/${sample}.sorted.bam" \
+    | samtools fixmate -@ 4 -m - - \
+    | samtools sort -@ 4 -o "$OUT_DIR/${sample}.fixmate_sorted.bam" -
+  samtools markdup -@ 4 "$OUT_DIR/${sample}.fixmate_sorted.bam" "$OUT_DIR/${sample}.besthit_oryza.irgsp.bam"
   samtools index "$OUT_DIR/${sample}.besthit_oryza.irgsp.bam"
-  rm -f "$OUT_DIR/${sample}.sorted.bam"
+  rm -f "$OUT_DIR/${sample}.sorted.bam" "$OUT_DIR/${sample}.fixmate_sorted.bam"
 
-  n_reads=$(samtools view -c "$OUT_DIR/${sample}.besthit_oryza.irgsp.bam")
-  n_dup=$(samtools view -c -f 1024 "$OUT_DIR/${sample}.besthit_oryza.irgsp.bam")
-  echo "[done] $sample: $n_reads mapped reads, $n_dup flagged as duplicates (not removed, just flagged -- pseudo_haploid_call.py filters them at pileup time)"
+  n_mapped=$(samtools view -@ 4 -c -F 4 "$OUT_DIR/${sample}.besthit_oryza.irgsp.bam")
+  n_dup=$(samtools view -@ 4 -c -f 1024 "$OUT_DIR/${sample}.besthit_oryza.irgsp.bam")
+  n_q30=$(samtools view -@ 4 -c -F 1028 -q 30 "$OUT_DIR/${sample}.besthit_oryza.irgsp.bam")
+  n_q20=$(samtools view -@ 4 -c -F 1028 -q 20 "$OUT_DIR/${sample}.besthit_oryza.irgsp.bam")
+  echo "[done] $sample: mapped=$n_mapped duplicates_flagged=$n_dup mapq>=30_nondup=$n_q30 mapq>=20_nondup=$n_q20 (duplicates not removed -- pseudo_haploid_call.py filters them at pileup time)"
 done
