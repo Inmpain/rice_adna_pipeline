@@ -12,10 +12,22 @@
 上一个会话因为上下文太长，把任务交接到这里继续。**按下面顺序做，不要
 跳步骤，也不要假设某一步已经完成——每一步的真实状态都写在后面**：
 
+**2026-08-12 更新（同日稍晚）：GPT 对本分支做了一轮方法学复核，Claude
+Code 核对代码后写成 `docs/ECOTYPE_PCA_EXECUTION_PLAN.md`——那份文档现在
+是"接下来具体做什么"的权威来源，本节以下 1-4 条仍然成立，但已随之更新：
+`check_ref.py` 的判定逻辑不再直接决定 `--swap-ref-alt`（第 4 条的说法
+已修正，权威检验改为 leave-one-out 模拟，见执行计划 2.1 节）；
+`map_besthit_to_irgsp.sh` 的比对去重链路已与主流程对齐；
+`merge_ancient_into_panel.py` 已加固为硬退出+原子写入。接手时建议顺序：
+先看执行计划文档第 0-1 节掌握全局，再回来看本节剩余步骤和 3.2 节待办。**
+
 1. **先问用户：上次给的BWA映射命令跑了没有？结果贴一下。**
    命令、样本名单、预期输出全部在5.8节"①的运行命令"里，一字不差抄
    过去问就行，不要凭空重新设计一遍。这条命令是2026-08-12给出的，
    **本文档写完时还没拿到任何运行结果**，接手时第一件事就是确认这个。
+   **注意：`map_besthit_to_irgsp.sh` 已在同日稍晚更新过一版（对齐主
+   流程的去重链路），如果用户跑的是旧版下载的脚本，需要重新下载新版
+   再跑，不要直接用旧结果。**
 2. **BWA确认跑完之后，转去做群体标签**（3.2节待办1/2/2c）——这是当前
    唯一还没开始动手、真正卡住整条链路的工作，三个panel都要做。建议
    顺序：**先2(29M_3k)最简单**(3K RGP官方标签直接匹配，不需要先核实
@@ -30,12 +42,16 @@
    样本×3个panel。
 4. **⚠️絕对不要跳过**：`pseudo_haploid_call.py`默认假设panel `.snp`
    文件第5列=REF、第6列=ALT，但3.1节已经证实这个假设对720这个panel
-   只对了91.5%(183/200)，不是100%——每个panel真正调用
-   `pseudo_haploid_call.py`处理古代样本之前，**必须**先用
-   `check_ref.py`的`snp`模式重新核对一遍这个panel的`.snp`文件本身的
-   方向(不是VCF阶段核对过就算数，convertf转完之后列顺序有没有变没有
-   专门验证过，尤其Civáň这个新转出来的.snp文件从来没有单独核对过)。
-   如果方向反了，调用时加`--swap-ref-alt`。命令在5.8节。
+   只对了91.5%(183/200)，不是100%——**不能仅凭这个 FASTA 匹配率来
+   判断要不要加 `--swap-ref-alt`，这两件事是不同的问题（见执行计划
+   2.1节的详细区分）**。真正权威的检验是执行计划第6节的
+   leave-one-out模拟：用panel里一个已知标签的现代样本，遮蔽成古代
+   样本的覆盖模式，跑同一套调用+投影逻辑，看是否还能投影回自己真实
+   的现代群体——如果不能，说明0/2编码方向与该panel已有的现代基因型
+   矩阵不一致，这时才加`--swap-ref-alt`。这个模拟脚本
+   (`simulate_leaveoneout_projection.py`)还没写，是当前最优先的开发
+   待办之一。命令细节在5.8节（`check_ref.py`的snp模式仍然值得跑，
+   结果仍然是有用信息，只是不能单独作为swap的判断依据）。
 
 这份文档已经很长，**不需要通读全部历史**才能接手——5.8节是专门为这个
 场景写的完整快照（脚本清单+服务器路径+待运行命令+核对命令），配合本节
@@ -352,7 +368,10 @@ Civáň统一面板先给出"栽培/野生/混合"这个粗判断，两边不再
   不是单纯的"顺序颠倒"能解释的，可能是720面板内部个别位点的数据质量问题，
   暂不处理。**现在两个panel各自独立跑PCA，这个反向问题不再需要处理**——
   smartpca只看自己panel内部的REF/ALT一致性，不涉及跨panel比较。**但
-  `pseudo_haploid_call.py`需要知道这个方向才能正确输出0/2，见5.8节。**
+  `pseudo_haploid_call.py`需要知道这个方向才能正确输出0/2，这个方向的
+  权威判断依据是执行计划文档第6节的leave-one-out模拟，不是这里的FASTA
+  匹配率本身——匹配率低只说明原始数据标注习惯，不直接等同于0/2编码方向
+  错误，见`docs/ECOTYPE_PCA_EXECUTION_PLAN.md`2.1节。**
 - **Civáň VCF核SNP矩阵(200/200抽查)**：**REF列与irgsp.fa 200/200完全
   匹配**，见1.3/5.6节。这是三个panel里坐标系验证最干净的一个。**但这是
   VCF阶段的核对，convertf转成`civan_snp.snp`之后有没有变、要专门重新
@@ -384,6 +403,11 @@ Civáň统一面板先给出"栽培/野生/混合"这个粗判断，两边不再
     脚本目前直接用的全量`besthit_oryza.fastq.gz`作为输入，如果这条
     建议后续被besthit分支采纳，①要改成用`target_aa_complex.fastq.gz`
     重新跑一遍。**
+0f. **【新增，2026-08-12同日稍晚，当前最高优先级的新开发工作】** 执行
+    `docs/ECOTYPE_PCA_EXECUTION_PLAN.md`——先做Phase 0 IRGSP覆盖普查
+    （不建PCA），再开发样本专属panel子集脚本和leave-one-out模拟脚本。
+    该文档第1节有完整的10步顺序，第2节记录了本次已经落地的三处代码
+    修复(REF/ALT判断逻辑纠正、比对去重对齐主流程、合并脚本硬检查)。
 1. **`6.7M_720`独立PCA的群体标签来源**——确认`asn720data/asn720.pop.fam`
    的FID列(`OrA-OrF`)能覆盖多少`asn720.6m.ind`里的样本：
    a) 按IID(样本ID)把`asn720.pop.fam`的标签匹配到`asn720.6m.ind`上，
@@ -511,7 +535,7 @@ bias)——covered位点越少，投影出来的坐标越容易被拉向原点/�
    匹配对照**，量化"覆盖度这么低、就算是一个真实的现代样本，投影坐标会
    收缩到什么程度"，作为该古代样本投影结果的校正基准/置信区间参考
 2. 对每个古代样本做**100-200次pseudo-haplotype重复抽样**(每次独立在
-   每个覆盖位点随机抽一条read取碱基)，每次重复各自投影一次，画出**投影
+   每个覆盖位点随机抽一条覆盖read取碱基)，每次重复各自投影一次，画出**投影
    点云**而不是单一个点，点云的分布形态本身就是一种不确定性量化——点云
    集中在一个现代群体附近，可以报告"主要接近该群体"；点云横跨多个群体，
    应该报告"混合来源或数据不足"，而不是强行归到某一个群体
@@ -519,7 +543,10 @@ bias)——covered位点越少，投影出来的坐标越容易被拉向原点/�
 这两条是第3.2节待办3的**增量**部分，等①②③④四个脚本先跑通单次调用版本
 之后再实现——`pseudo_haploid_call.py`目前的`--seed`参数已经为将来支持
 多次重复抽样留了接口，但脚本本身还是单次确定性调用，没有循环生成N个
-副本的逻辑。
+副本的逻辑。**2026-08-12更新：这套不确定性量化的组合方案(多次抽样+区块
+bootstrap+现代样本降采样对照+现代reads走同一流程)已经在
+`docs/ECOTYPE_PCA_EXECUTION_PLAN.md`第6节写成具体待办，与leave-one-out
+模拟脚本共用同一套实现。**
 
 ### 5.3 沉积物DNA不能默认是单一二倍体个体（采纳）
 
@@ -557,6 +584,11 @@ Civáň论文Table S3给出`qSH1`(落粒)/`qSD1-2`(休眠/株高)/`SPS1`(穗粒�
 再考虑要不要拆成独立分支——不要在验证覆盖度是否可行之前就先拆分支，
 参考main分支8.3节"先做半天工作量的覆盖度QC，再决定要不要投入"这个已经
 验证过的性价比原则。**
+
+**2026-08-12更新**：又新增了一条同类工作——旱稻/水稻(upland/irrigated)
+生态型panel的整理(Lyu et al. 2014等)，同样面临"是否新开分支"的问题，
+结论与这里完全一致(不需要)，完整推理见`docs/ECOTYPE_PCA_EXECUTION_PLAN.md`
+第10节。
 
 ### 5.5 besthit读集合分级（已转发并落地，见第4节末尾/besthit分支第7.6节）
 
@@ -658,19 +690,23 @@ convertf已知解析行为——convertf检测到"全部样本都被判定为ign
 
 | # | 脚本 | 仓库路径 | 状态 |
 |---|---|---|---|
-| ① | `map_besthit_to_irgsp.sh` | `scripts/ecotype_pca/` | 运行命令已给用户，**结果未知，接手第一件事是问用户跑了没有** |
-| ② | `pseudo_haploid_call.py` | `scripts/ecotype_pca/` | 已写完，未运行过 |
-| ③ | `merge_ancient_into_panel.py` | `scripts/ecotype_pca/` | 已写完，未运行过 |
+| ① | `map_besthit_to_irgsp.sh` | `scripts/ecotype_pca/` | 运行命令已给用户，**结果未知，接手第一件事是问用户跑了没有**（⚠️2026-08-12同日稍晚已更新一版，对齐主流程去重链路，若用户手上是旧版脚本需重新下载） |
+| ② | `pseudo_haploid_call.py` | `scripts/ecotype_pca/` | 已写完，未运行过（⚠️同日稍晚更新：报告字段拆分+swap-ref-alt判断依据修正，见`docs/ECOTYPE_PCA_EXECUTION_PLAN.md`2.1/7节） |
+| ③ | `merge_ancient_into_panel.py` | `scripts/ecotype_pca/` | 已写完，未运行过（⚠️同日稍晚更新：硬检查+原子写入，见执行计划2.3节） |
 | ④ | `par.PROJECT.template` | `scripts/ecotype_pca/` | 模板，**故意留空poplistname**，等标签工作(待办1/2/2c)完成才能真正填 |
 
 **①做什么**：把besthit过滤后的FASTQ(还没有位置信息、也还没去重)比对到
 `irgsp.fa`，产出带位置信息、已用`samtools markdup`标记重复(不删除，②
 在pileup阶段按需过滤)的BAM。三个panel共用同一份BAM，只映射一次。
 `bwa aln`参数用的是文献里标准的古DNA设置(关闭seeding、放宽错配容忍度)，
-**没有跟本项目主流程`scripts/server_originals/`里实际用的BWA参数核对
-一致性**，如果想跟主流程完全对齐，需要先去查那边的脚本。
+**已核对与本项目主流程`scripts/server_originals/mapping.sh`完全一致**
+(2026-08-12同日稍晚核实，`-l 1024 -n 0.01 -o 2`两边逐字相同，之前"未核对"
+的说法已过时)；去重链路(`samtools collate|fixmate -m|sort|markdup`)和
+过滤(`-F 0x904`)也已改为与主流程一致，唯一刻意保留的差异是不加`-r`
+(不物理删除重复，只打标记)，理由见执行计划2.2节。
 
-**①的运行命令(2026-08-12已给用户，结果未知)**：
+**①的运行命令(2026-08-12已给用户，结果未知；⚠️脚本同日稍晚已更新，
+若之前已下载过旧版，需要重新curl覆盖)**：
 ```bash
 cd /home/scratch/yinmt202607/gene/scripts
 curl -O https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/ecotype-pca-panel/scripts/ecotype_pca/map_besthit_to_irgsp.sh
@@ -690,8 +726,8 @@ nohup bash map_besthit_to_irgsp.sh "$BESTHIT_DIR" "$IRGSP_FA" "$OUT_DIR" \
 tail -80 map_besthit_to_irgsp.log
 ```
 16个样本名抄自besthit分支`ORYZA_BESTHIT_HANDOFF.md`第6.3节。`OUT_DIR`是
-新建目录，之前不存在。**每个样本跑完脚本会打印mapped reads总数和标记为
-duplicate的reads数，这两个数字要看一眼是否合理(不应该是0，也不应该
+新建目录，之前不存在。**每个样本跑完脚本会打印mapped/duplicates_flagged/
+mapq30/mapq20四个数字，这些数字要看一眼是否合理(不应该是0，也不应该
 接近besthit输出的原始read数——besthit那16个样本的kept_reads在2445-12924
 之间，见besthit分支6.3节，比对之后应该接近这个量级，不应该差太多)。**
 
@@ -701,23 +737,22 @@ duplicate的reads数，这两个数字要看一眼是否合理(不应该是0，�
 `.snp`文件完全一致(没覆盖到的位点填9)。**两个关键方法学决定**：
 - 默认排除transition位点(A/G、C/T)的调用(`--transversions-only`默认
   开启)，规避古DNA末端损伤(C→T/G→A)误判，因为本项目自己的损伤窗口
-  校准还没定论(besthit分支7.5节)
-- **⚠️REF/ALT哪一列是哪个方向，必须在真正调用前用`check_ref.py`的
-  `snp`模式重新核对，不能直接信默认设置**——已知720这个panel的方向
-  只对了91.5%不是100%(3.1节)，Civáň的`.snp`文件（convertf转出来的，
-  不是VCF阶段那份）从来没有专门核对过。核对命令：
-  ```bash
-  cd /home/scratch/yinmt202607/db/paper1   # 或对应panel目录
-  curl -O https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/ecotype-pca-panel/scripts/ecotype_pca/check_ref.py
-  python3 check_ref.py civan_snp.snp snp 200
-  ```
-  如果`A2_is_ref`不是接近200/200，跑`pseudo_haploid_call.py`时要加
-  `--swap-ref-alt`。
+  校准还没定论(besthit分支7.5节)。**操作上应该对每个样本每个panel跑
+  两次(TV默认版+`--no-transversions-only`的ALL版)，双轨对照，见执行
+  计划第7节。**
+- **⚠️REF/ALT哪一列是哪个方向，权威判断依据是leave-one-out模拟
+  (执行计划第6节)，不是check_ref.py的FASTA匹配率**——已知720这个
+  panel的匹配率只有91.5%不是100%(3.1节)，但这不能直接等同于0/2编码
+  方向错误，两者是不同问题，见执行计划2.1节的详细区分。`--swap-ref-alt`
+  只应该在leave-one-out模拟证实需要翻转之后才加。
 
 **③做什么**：把②对多个古代样本的调用结果，作为额外的列，一次性拼接进
 panel自己的`.eigenstratgeno`文件(不是分开建文件——smartpca的
 `-lsqproject`机制要求现代和古代样本在同一份基因型文件里，靠`.ind`文件
-最后一列的群体标签区分谁参与建轴、谁被投影，见④)。
+最后一列的群体标签区分谁参与建轴、谁被投影，见④)。**2026-08-12同日
+稍晚已加固**：行数不匹配现在是硬退出+清理临时文件(不会再有IndexError
+崩溃或静默写出不完整文件的情况)，新增字符校验和重复ID检查，输出改为
+原子写入，见执行计划2.3节。
 
 **④做什么，以及为什么现在填不了**：`lsqproject: YES` + `poplistname`
 只列现代群体标签(不含古代样本的占位标签，默认叫`Ancient`)，这样
@@ -726,7 +761,8 @@ smartpca只用`poplistname`里列出的现代样本计算特征向量，`Ancient
 的现代群体标签已经合并进`.ind`文件——这件事三个panel都还没做，是待办
 1/2/2c，也是现在唯一真正卡住往下走的事**，所以④现在只是个带占位符的
 模板，故意没有编一份假的`poplistname`去填(填假的会让smartpca"看起来
-能跑"但结果毫无意义，比报错更危险)。
+能跑"但结果毫无意义，比报错更危险)。模板还应补充
+`numchrom:12`/`numthreads:8`/`numoutlieriter:0`，见执行计划第9节。
 
 **三个panel的服务器路径速查(截至2026-08-11晚全部确认过)**：
 ```
@@ -761,14 +797,15 @@ Civáň:    /home/scratch/yinmt202607/db/paper1/
    1.3节)，解析时要跳过或忽略这些空列，不要被列数吓到。
 
 **四步流水线设计要点回顾(精华摘要，不用重读5.0-5.7节全部历史)**：
-- ①bwa映射到irgsp.fa(三个panel共用一份BAM) + markdup标记重复(不删除)
+- ①bwa映射到irgsp.fa(三个panel共用一份BAM，已对齐主流程去重链路)
 - ②pseudo-haplotype调用：只在真实覆盖到的位点调用，默认排除transition
-  位点规避末端损伤，输出跟panel `.snp`文件行数/顺序完全一致
+  位点规避末端损伤，输出跟panel `.snp`文件行数/顺序完全一致，
+  TV/ALL双轨、report字段已拆分no_coverage/allele_mismatch
 - ③把②的结果作为额外列拼进panel自己的`.eigenstratgeno`(不是分开建
-  文件)
+  文件)，已加固为硬检查+原子写入
 - ④smartpca：`lsqproject: YES` + `poplistname`只列现代群体标签(不含
   `Ancient`)
 
-**下一步顺序**：①确认BWA结果 → 群体标签(2→1→2c) → ②③④在1-2个样本
-上冒烟测试 → 铺开到全部16样本×3个panel → (更靠后)5.2节的bootstrap
-点云增量设计。
+**下一步顺序**：见`docs/ECOTYPE_PCA_EXECUTION_PLAN.md`第1节的10步
+清单（Phase 0覆盖普查→群体标签→样本专属子集+leave-one-out冒烟→
+铺开到全部16样本×3个panel→bootstrap点云增量设计）。
