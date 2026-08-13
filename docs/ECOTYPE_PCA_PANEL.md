@@ -7,44 +7,69 @@
 
 ---
 
-## 📍 给接手人的启动指令（新会话/新窗口先读这里，2026-08-13深夜更新）
+## 📍 给接手人的启动指令（新会话/新窗口先读这里，2026-08-14更新）
 
-**这一节 2026-08-12 晚写的版本已经整体过时**——那时候三个panel的群体
-标签、样本专属子集PCA、leave-one-out正对照全部还没做。**2026-08-13
-这一天全部做完了**，当前真实状态：
+**⚠️2026-08-14更新：上一版(2026-08-13深夜)说"批量铺开已开始"是不准确的
+——用户已明确说明，除了下面第①项那一次Civáň smoke test，其余全部PCA
+（包括poplist bug修复后的重跑、16样本×3panel批量铺开、任何MAF/LD
+pruning）**实际上都还没有在服务器上真正跑过**，之前给的都只是命令，
+不要假设它们已经执行，接手后第一件事是用`squeue -u $USER`/`ls`核实
+服务器上到底有什么，不要相信文档里任何"已提交"的措辞。真实状态：
 
-1. **群体标签（3.2节待办1/2/2c）：三个panel全部完成**，不是待办了。
-   `build_29m3k_population_labels.py`/`build_720_population_labels.py`/
-   `build_civan_population_labels.py`，匹配率 99.2%/99.7%/99.9%，具体
-   数字和ID桥接逻辑见各脚本docstring，不在这里重复。
-2. **UNK（完全无法归类）的样本已经从三个panel的矩阵里物理删除**
-   （`filter_panel_by_label.py`），产出文件名规律是原文件名加
-   `.filtered`（如`NB_final_snp.filtered.eigenstratgeno`）——**新脚本
-   一律该用`.filtered.*`这批文件，不要再用没过滤过的原始panel文件**，
-   服务器路径见`docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`。
-3. **①②③④四步流水线不再是"写完没跑过"**——`build_sample_panel_subset.py`
-   +`simulate_leaveoneout_projection.py`两个新脚本补齐了"样本专属子集"
-   和"leave-one-out模拟"这两块，配合已有的`pseudo_haploid_call.py`/
-   `merge_ancient_into_panel.py`，在Civáň panel上完整跑通并且
-   **leave-one-out正对照通过**（模拟结果跟已知样本真实投影坐标几乎
-   完全重合，PC1/PC2差距在小数点后4位）——**下面第4条描述的
-   REF/ALT方向问题已经有了直接实证，不再是悬而未决的待办**。
-4. ~~⚠️絕对不要跳过：REF/ALT方向验证~~ **已完成，结论是当前编码方向
-   正确，不需要`--swap-ref-alt`**——上面第3条那次leave-one-out就是
-   这个验证，权威依据是执行计划2.1/6节，不再需要重新设计验证方法。
-5. **当前唯一还在进行中的事**：16样本×3panel=48个组合的批量铺开
-   （`run_sample_panel_pca.sh`批量提交），已开始但没跑完。
+1. **群体标签（3.2节待办1/2/2c）+ UNK剔除：三个panel全部完成，且已
+   验证过**。`build_29m3k_population_labels.py`/`build_720_population_labels.py`/
+   `build_civan_population_labels.py`，匹配率 99.2%/99.7%/99.9%；
+   `filter_panel_by_label.py`产出`.filtered.*`文件——**新脚本一律用
+   这批文件，不要用没过滤过的原始panel文件**。服务器路径见
+   `docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`。
+2. **唯一真正在服务器上跑成功过的PCA**：Civáň panel、LV7008416379、
+   leave-one-out正对照——`docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`第6节，
+   结果真实（aromatic最近，dist=0.0083；LOO模拟坐标跟已知样本真实
+   投影几乎完全重合，PC1/PC2差距在小数点后4位，REF/ALT编码方向由此
+   直接证实无需`--swap-ref-alt`）。**但这次跑的时候，axis-building
+   的poplistname里混进了456个O._rufipogon野生稻样本**——见下一条，
+   这个结果的"aromatic最近"结论建立在一个已知bug之上，还没有用修复
+   后的版本重新验证过。
+3. **已修复但还没重新验证的bug**（commit `cd5de6a`）：
+   `run_sample_panel_pca.sh`原来把merged.ind里除Ancient外的所有标签
+   都塞进poplistname，导致Civáň panel的野生稻样本参与了axis-building
+   ——这跟Civáň论文自己的方法相反(论文只用595份栽培稻定义axes，野生
+   稻只做projection)。修复：新增可选第9个参数`REFERENCE_LABELS_FILE`，
+   配套`scripts/ecotype_pca/civan_domesticated_reference_labels.txt`
+   列出6个栽培稻标签。**下一步要做的第一件事**：用修复后的脚本重跑
+   LV7008416379×Civáň（命令在`docs/ECOTYPE_PCA_PANEL_QC_DESIGN.md`
+   第0节引用的对话记录里，也可以直接照抄下面这段重新生成），看
+   "aromatic最近"这个结论在axis只含栽培稻之后是否还成立。
+4. **2026-08-13当天问了GPT关于三个panel MAF/LD pruning的问题**，得到
+   一整套架构性反馈（reference-first、冻结marker set、单次smartpca
+   覆盖所有古样本而不是每个样本单独跑一次子集），**全部记录在新文档
+   `docs/ECOTYPE_PCA_PANEL_QC_DESIGN.md`，这是仅次于本节的第二重要
+   入口文档**——里面有完整的待办顺序(第6节)、每个panel的具体参数
+   建议、哪些是GPT转述还没独立核实过的，都写清楚了，不要在新会话里
+   重新问一遍GPT或重新设计一遍。**720 panel被标记为最紧急**：这份
+   6.7M SNP矩阵是论文第一作者私下发的加密版本，来源和处理流程完全
+   不透明，跟论文本身发表的60,722-marker分析集不是一回事。
+5. **三个panel目前都没有做过MAF/LD pruning**，只做过UNK剔除——这是
+   `ECOTYPE_PCA_PANEL_QC_DESIGN.md`记录的核心待办，还没开始。
+6. **样本专属子集PCA(`build_sample_panel_subset.py`)的设计缺陷**：
+   每个古样本单独跑一次、每次都把panel缩到该样本自己覆盖的SNP——这
+   意味着不同古样本的"PC1"其实是不同marker set上算出来的，不能直接
+   拿来比较（比如画时间轨迹）。`ECOTYPE_PCA_PANEL_QC_DESIGN.md`第1节
+   给出了正确设计(reference-first、每个panel冻结一套marker set、单
+   次smartpca覆盖全部古样本)，**这是当前最大的一块未完成重构，还没
+   开始动手**。
 
-**另外，本次深夜工作中发现一个跟本分支设计无关、但会直接导致SLURM
-作业失败的集群基础设施问题：`/itp`挂载点没有覆盖`node06`（曾经也包括
-临时down掉的`node05`），任何作业只要路径经过itp软链接、又被调度到
-node06上就会瞬间失败——`sbatch`/`srun`一律要加
-`--exclude=node05,node06`，已写入长期记忆，不止是这份文档里记一笔。**
+**集群基础设施问题（跟本分支设计无关，但会直接导致SLURM作业失败，
+已写入长期记忆）**：`/itp`挂载点不覆盖`node06`(曾经也包括临时down掉
+的`node05`)，任何作业路径经过itp软链接又调度到node06就会瞬间失败——
+`sbatch`/`srun`一律加`--exclude=node05,node06`。
 
-`docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`是这一整段工作（标签匹配→矩阵
-瘦身→样本专属子集PCA→leave-one-out→批量铺开）的服务器命令原样记录，
-跟本文档的关系和`ECOTYPE_PCA_PHASE0_COMMANDS.md`一样——本文档回答
-"为什么"，那份文档"照抄命令用"。
+**读文档顺序**：先读本节 → `docs/ECOTYPE_PCA_PANEL_QC_DESIGN.md`(GPT
+review + MAF/LD设计 + 待办顺序) → `docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`
+(标签匹配→矩阵瘦身→样本专属子集PCA→leave-one-out的服务器命令原样
+记录，跟`ECOTYPE_PCA_PHASE0_COMMANDS.md`一个风格)。本文档回答"为
+什么"，PHASE1_COMMANDS"照抄命令用"，QC_DESIGN"下一步做什么、参数
+怎么定"。
 
 ---
 
