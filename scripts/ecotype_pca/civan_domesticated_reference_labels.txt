@@ -1,0 +1,6 @@
+indica
+aus
+aromatic
+japonica
+japonica_(tropical)
+japonica_(temperate)
