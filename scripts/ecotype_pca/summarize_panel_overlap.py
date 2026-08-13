@@ -139,6 +139,13 @@ def build_coverage_index(
                 ignore_orphans=False,
                 truncate=False,
                 max_depth=1_000_000,
+                # pysam's own default flag_filter (0x704: unmapped, secondary,
+                # qcfail, duplicate) silently drops those reads before this
+                # loop ever sees them, making the excluded_flag_* QC counter
+                # below always read 0 regardless of real duplicate content.
+                # Disable it so the explicit flag checks in this loop are the
+                # only filtering step, and the QC counts reflect reality.
+                flag_filter=0,
             ):
                 low_bases: set[str] = set()
                 high_bases: set[str] = set()
