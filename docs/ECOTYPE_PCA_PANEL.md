@@ -7,56 +7,44 @@
 
 ---
 
-## 📍 给接手人的启动指令（新会话/新窗口先读这里，2026-08-12晚写）
+## 📍 给接手人的启动指令（新会话/新窗口先读这里，2026-08-13深夜更新）
 
-上一个会话因为上下文太长，把任务交接到这里继续。**按下面顺序做，不要
-跳步骤，也不要假设某一步已经完成——每一步的真实状态都写在后面**：
+**这一节 2026-08-12 晚写的版本已经整体过时**——那时候三个panel的群体
+标签、样本专属子集PCA、leave-one-out正对照全部还没做。**2026-08-13
+这一天全部做完了**，当前真实状态：
 
-**2026-08-12 更新（同日稍晚）：GPT 对本分支做了一轮方法学复核，Claude
-Code 核对代码后写成 `docs/ECOTYPE_PCA_EXECUTION_PLAN.md`——那份文档现在
-是"接下来具体做什么"的权威来源，本节以下 1-4 条仍然成立，但已随之更新：
-`check_ref.py` 的判定逻辑不再直接决定 `--swap-ref-alt`（第 4 条的说法
-已修正，权威检验改为 leave-one-out 模拟，见执行计划 2.1 节）；
-`map_besthit_to_irgsp.sh` 的比对去重链路已与主流程对齐；
-`merge_ancient_into_panel.py` 已加固为硬退出+原子写入。接手时建议顺序：
-先看执行计划文档第 0-1 节掌握全局，再回来看本节剩余步骤和 3.2 节待办。**
+1. **群体标签（3.2节待办1/2/2c）：三个panel全部完成**，不是待办了。
+   `build_29m3k_population_labels.py`/`build_720_population_labels.py`/
+   `build_civan_population_labels.py`，匹配率 99.2%/99.7%/99.9%，具体
+   数字和ID桥接逻辑见各脚本docstring，不在这里重复。
+2. **UNK（完全无法归类）的样本已经从三个panel的矩阵里物理删除**
+   （`filter_panel_by_label.py`），产出文件名规律是原文件名加
+   `.filtered`（如`NB_final_snp.filtered.eigenstratgeno`）——**新脚本
+   一律该用`.filtered.*`这批文件，不要再用没过滤过的原始panel文件**，
+   服务器路径见`docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`。
+3. **①②③④四步流水线不再是"写完没跑过"**——`build_sample_panel_subset.py`
+   +`simulate_leaveoneout_projection.py`两个新脚本补齐了"样本专属子集"
+   和"leave-one-out模拟"这两块，配合已有的`pseudo_haploid_call.py`/
+   `merge_ancient_into_panel.py`，在Civáň panel上完整跑通并且
+   **leave-one-out正对照通过**（模拟结果跟已知样本真实投影坐标几乎
+   完全重合，PC1/PC2差距在小数点后4位）——**下面第4条描述的
+   REF/ALT方向问题已经有了直接实证，不再是悬而未决的待办**。
+4. ~~⚠️絕对不要跳过：REF/ALT方向验证~~ **已完成，结论是当前编码方向
+   正确，不需要`--swap-ref-alt`**——上面第3条那次leave-one-out就是
+   这个验证，权威依据是执行计划2.1/6节，不再需要重新设计验证方法。
+5. **当前唯一还在进行中的事**：16样本×3panel=48个组合的批量铺开
+   （`run_sample_panel_pca.sh`批量提交），已开始但没跑完。
 
-1. **先问用户：上次给的BWA映射命令跑了没有？结果贴一下。**
-   命令、样本名单、预期输出全部在5.8节"①的运行命令"里，一字不差抄
-   过去问就行，不要凭空重新设计一遍。这条命令是2026-08-12给出的，
-   **本文档写完时还没拿到任何运行结果**，接手时第一件事就是确认这个。
-   **注意：`map_besthit_to_irgsp.sh` 已在同日稍晚更新过一版（对齐主
-   流程的去重链路），如果用户跑的是旧版下载的脚本，需要重新下载新版
-   再跑，不要直接用旧结果。**
-2. **BWA确认跑完之后，转去做群体标签**（3.2节待办1/2/2c）——这是当前
-   唯一还没开始动手、真正卡住整条链路的工作，三个panel都要做。建议
-   顺序：**先2(29M_3k)最简单**(3K RGP官方标签直接匹配，不需要先核实
-   覆盖率)，**再1(720)**(需要先用`comm`核对`asn720.pop.fam`能覆盖
-   `asn720.6m.ind`里多少样本)，**最后2c(Civáň)**(要解析格式较乱的
-   `Table_S1.csv`)。三项各自的具体核对命令、公式，全部在5.8节"群体
-   标签三项待办"里写好了，可以直接抄给用户跑。
-3. **标签做完后**，回到3.2节待办3——四个脚本(①②③④，见5.8节清单)
-   已经写完并推送，**但没有任何一个在真实数据上跑通过**。先在1-2个
-   已经跑完besthit的样本上冒烟测试整条链路(①BWA→②pseudo-haplotype
-   调用→③合并进panel→④smartpca)，确认机制没问题，再铺开到全部16个
-   样本×3个panel。
-4. **⚠️絕对不要跳过**：`pseudo_haploid_call.py`默认假设panel `.snp`
-   文件第5列=REF、第6列=ALT，但3.1节已经证实这个假设对720这个panel
-   只对了91.5%(183/200)，不是100%——**不能仅凭这个 FASTA 匹配率来
-   判断要不要加 `--swap-ref-alt`，这两件事是不同的问题（见执行计划
-   2.1节的详细区分）**。真正权威的检验是执行计划第6节的
-   leave-one-out模拟：用panel里一个已知标签的现代样本，遮蔽成古代
-   样本的覆盖模式，跑同一套调用+投影逻辑，看是否还能投影回自己真实
-   的现代群体——如果不能，说明0/2编码方向与该panel已有的现代基因型
-   矩阵不一致，这时才加`--swap-ref-alt`。这个模拟脚本
-   (`simulate_leaveoneout_projection.py`)还没写，是当前最优先的开发
-   待办之一。命令细节在5.8节（`check_ref.py`的snp模式仍然值得跑，
-   结果仍然是有用信息，只是不能单独作为swap的判断依据）。
+**另外，本次深夜工作中发现一个跟本分支设计无关、但会直接导致SLURM
+作业失败的集群基础设施问题：`/itp`挂载点没有覆盖`node06`（曾经也包括
+临时down掉的`node05`），任何作业只要路径经过itp软链接、又被调度到
+node06上就会瞬间失败——`sbatch`/`srun`一律要加
+`--exclude=node05,node06`，已写入长期记忆，不止是这份文档里记一笔。**
 
-这份文档已经很长，**不需要通读全部历史**才能接手——5.8节是专门为这个
-场景写的完整快照（脚本清单+服务器路径+待运行命令+核对命令），配合本节
-和3.2节的待办列表就够用了。真正需要读历史细节的地方，本节和5.8节都有
-指向具体章节的链接。
+`docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`是这一整段工作（标签匹配→矩阵
+瘦身→样本专属子集PCA→leave-one-out→批量铺开）的服务器命令原样记录，
+跟本文档的关系和`ECOTYPE_PCA_PHASE0_COMMANDS.md`一样——本文档回答
+"为什么"，那份文档"照抄命令用"。
 
 ---
 
@@ -390,10 +378,9 @@ Civáň统一面板先给出"栽培/野生/混合"这个粗判断，两边不再
     调用+smartpca投影四步流水线全部脚本已写完并推送，详见5.8节完整
     清单。**下一步不是继续写代码，是先跑通①(BWA映射)拿到结果**，见
     📍节和5.8节。
-0d. **【当前真正的关键路径阻塞项】群体标签(待办1/2/2c)**——四个脚本
-    虽然写完了，但④(smartpca)完全没法真正跑，因为`poplistname`需要
-    真实的现代群体标签，三个panel目前都还没做这件事。见待办1/2/2c，
-    详细核对命令在5.8节。
+0d. **【已完成，2026-08-13】群体标签(待办1/2/2c)**——三个panel全部
+    做完，④(smartpca)已经用真实`poplistname`跑通并且leave-one-out
+    验证通过，见📍节。
 0b. **【同等优先级，尚未核实】去besthit分支核实"按taxonomic tier分级
     输出KEEP集合"这条建议(第0节末尾/第4节末尾)是否已经实施**——如果
     还没有，需要决定是在besthit分支加这个分级逻辑，还是本分支自己对
@@ -408,34 +395,45 @@ Civáň统一面板先给出"栽培/野生/混合"这个粗判断，两边不再
     （不建PCA），再开发样本专属panel子集脚本和leave-one-out模拟脚本。
     该文档第1节有完整的10步顺序，第2节记录了本次已经落地的三处代码
     修复(REF/ALT判断逻辑纠正、比对去重对齐主流程、合并脚本硬检查)。
-1. **`6.7M_720`独立PCA的群体标签来源**——确认`asn720data/asn720.pop.fam`
-   的FID列(`OrA-OrF`)能覆盖多少`asn720.6m.ind`里的样本：
-   a) 按IID(样本ID)把`asn720.pop.fam`的标签匹配到`asn720.6m.ind`上，
-      算出能覆盖多少比例的720号样本(尤其`B0xx_merged`风格的样本有没有
-      对应条目，目前只在`asn720.pop.fam`里见过`ERR`风格的ID)——具体
-      核对命令见5.8节
-   b) 读`db/wild_rice_pangenome_README.txt`(新发现，见1.2节)，确认
-      `OrA-OrF`的精确定义，以及是否与`A pangenome reference of wild
-      and cultivated rice`(Nature 2025)论文里的`Or-Ia/Or-Ib/Or-II/
-      Or-IIIa/Or-IIIb`分组是**同一套体系还是两套不同的编号方案**——
-      字母+罗马数字 vs 单字母，命名习惯不同，不能想当然认为是一回事
-2. **`29M_3k`独立PCA的群体标签**——直接用3K RGP官方元数据
-   (`docs/references/3k_rice_genomes_project/rice_line_metadata_20141029.xlsx`，
-   main分支)里的IND/AUS/ARO/TRJ/TEJ/ADM标准亚群标签，**不需要再等
-   `OrA-OrF`**，这条相对简单，**建议三项标签待办里最先做这个**，可以
-   先做。
-2c. **Civáň PCA-C的群体标签**——`civan_snp.ind`的样本群体列目前是plink2
-    从VCF phenotype/FID列继承来的占位符(见5.6节ignore警告的成因)，
-    真实的栽培/野生/亚群分类需要从`Table_S1.csv`(样本元数据，1.3节)
-    按样本ID匹配过去，跟待办1/2是同一类工作，可以并行做，但`Table_S1.csv`
-    表头格式比较乱(见1.3节)，解析时要小心。
-3. **【已完成脚本，未完成运行】三条PCA各自的pseudo-haplotype调用脚本 +
-   smartpca具体参数**——四个脚本(①②③④)已经写完并推送，见5.8节，包含
-   第5.2节的shrinkage校正downsampling+点云设计**目前还没有实现**(现在
-   的`pseudo_haploid_call.py`只做单次确定性调用，多次重复抽样的
-   bootstrap点云版本是这四个脚本跑通之后的下一层增量工作，不是当前
-   优先级)。**当前优先级是：①跑通(拿到BAM) → 群体标签(1/2/2c) →
-   ②③④在1-2个样本上冒烟测试 → 铺开到全部16样本×3个panel。**
+1. **【已完成，2026-08-13】`6.7M_720`独立PCA的群体标签**——
+   `build_720_population_labels.py`，718/720 (99.7%) 匹配。真实情况
+   比预想的复杂：`asn720.pop.fam`不是纯野生稻标签，混了栽培稻锚点
+   (IND/AUS/ARO/TRJ/TEJ/ADM)；`_merged`后缀样本(310个)在`.pop.fam`里
+   完全没有对应条目(只有ERR/SRR风格ID)，改用剥掉后缀后复用29M_3k同一份
+   3K RGP元数据解决。`db/wild_rice_pangenome_README.txt`确认是**空
+   文件**，`OrA-OrF`跟Nature 2025论文`Or-Ia/Or-Ib/Or-II/Or-IIIa/
+   Or-IIIb`是否同一套体系**仍未确认**，标签原样保留`OrA-OrF`，不做
+   等价假设。`OrADM`（推测是野生稻侧的admixed，未证实）、`RAY`（9个
+   样本，含义完全未知）都原样保留，未强行解释。
+2. **【已完成，2026-08-13】`29M_3k`独立PCA的群体标签**——
+   `build_29m3k_population_labels.py`，3000/3024 (99.2%) 匹配。IRIS_313
+   风格ID(2466个)按Table S1A精确匹配；B0xx/CX风格ID(总558个)都在
+   Table S1B里(分属"MC"/"IRMBN"两个内部来源，之前以为CX完全没有元数据
+   是错的，是没查全导致的误判)。8种原始Variety Group取值里6种干净映射
+   到IND/AUS/ARO/TRJ/TEJ，另外`Intermediate type`(135)、`Japonica`
+   未细分(132)**刻意不**强行归类，保留原样标签(`INTERMEDIATE_TYPE`/
+   `JAPONICA_UNSPEC`)，不参与建轴但不删除。24个UNK已从矩阵物理删除
+   (`filter_panel_by_label.py`)。
+2c. **【已完成，2026-08-13】Civáň PCA-C的群体标签**——
+    `build_civan_population_labels.py`，1055/1056 (99.9%) 匹配。样本ID
+    是plink2自动生成的`ACCESSION_ACCESSION`自重复格式(部分样本本身带
+    FID、没被重复)，`recover_accession()`按字符串中点位置切分而不是
+    按下划线数量(因为accession本身可能带下划线，如`IRIS_313-9986`)。
+    野生样本(461个)在panel里是ERR号，但`Table_S1.csv`按`W####`编号，
+    靠`Table_S2.csv`(名义上是"叶绿体组装质控表"，实际带`Accession↔SRA
+    dataset used`精确桥接)解决，460/461桥接成功。**发现一个真实
+    数据问题并修正**：Civáň面板的野生样本不是清一色O. rufipogon，
+    有4个是完全不同的种(O. meridionalis/O. glaberrima/O. barthii/
+    O. longistaminata)，`Table_S1.csv`的Group列对所有野生样本都是
+    占位符"-"，脚本改为Group为"-"时退回用Species列，避免这4个种被
+    误并入O. rufipogon这一个标签。1个最终UNK(461-460桥接失败的那个)。
+3. **【已完成并验证，2026-08-13】四步流水线在真实数据上跑通**——
+   `build_sample_panel_subset.py`+`simulate_leaveoneout_projection.py`
+   补齐了样本专属子集化和leave-one-out模拟这两块，在Civáň panel用
+   LV7008416379完整跑通①②③④全链路，leave-one-out正对照通过(见📍节)。
+   第5.2节的bootstrap点云版本仍然是下一层增量工作，不是当前优先级。
+   **当前优先级：16样本×3panel批量铺开**（`run_sample_panel_pca.sh`，
+   进行中，见`docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`）。
 4. **核查`asn720.6m.ind`与`NB_final_snp.ind`之间的样本ID重叠**(即
    `CX382`疑似重复案例)——去掉`_merged`后缀后系统性比对两份样本列表，
    确认重叠规模。优先级较低，不阻塞主线，但正式产出结果前必须处理。
@@ -681,19 +679,25 @@ convertf已知解析行为——convertf检测到"全部样本都被判定为ign
 `smartpca`的EIGENSTRAT格式数据了。
 
 ### 5.8 pseudo-haplotype调用+smartpca投影：四步流水线完整清单
-（2026-08-12交接快照，新窗口从这里接手最合适）
+（2026-08-12交接快照，⚠️2026-08-13深夜已整体跑通，见下方状态列更新
+和📍节——本节结构保留作历史参照，状态描述已更新为当前真实情况）
 
 这一节是专门为"新开一个Claude Code窗口接手"准备的，尽量做到不需要
 回头翻整个对话历史。
 
-**四个脚本，全部已写完并推送，⚠️没有任何一个在服务器真实数据上跑过**：
+**四步流水线（含2026-08-13新增的样本专属子集化+leave-one-out两步）
+全部已在Civáň panel真实数据上跑通并验证通过**，16样本×3panel批量
+铺开进行中：
 
 | # | 脚本 | 仓库路径 | 状态 |
 |---|---|---|---|
-| ① | `map_besthit_to_irgsp.sh` | `scripts/ecotype_pca/` | 运行命令已给用户，**结果未知，接手第一件事是问用户跑了没有**（⚠️2026-08-12同日稍晚已更新一版，对齐主流程去重链路，若用户手上是旧版脚本需重新下载） |
-| ② | `pseudo_haploid_call.py` | `scripts/ecotype_pca/` | 已写完，未运行过（⚠️同日稍晚更新：报告字段拆分+swap-ref-alt判断依据修正，见`docs/ECOTYPE_PCA_EXECUTION_PLAN.md`2.1/7节） |
-| ③ | `merge_ancient_into_panel.py` | `scripts/ecotype_pca/` | 已写完，未运行过（⚠️同日稍晚更新：硬检查+原子写入，见执行计划2.3节） |
-| ④ | `par.PROJECT.template` | `scripts/ecotype_pca/` | 模板，**故意留空poplistname**，等标签工作(待办1/2/2c)完成才能真正填 |
+| ① | `map_besthit_to_irgsp.sh` | `scripts/ecotype_pca/` | **已完成**，16样本全部跑完，改用全基因组besthit读集（放弃了ORSC窄化，见`docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`开头决策记录） |
+| ② | `pseudo_haploid_call.py` | `scripts/ecotype_pca/` | **已完成并验证**，LV7008416379在Civáň panel上的调用结果（called=147）跟独立的`summarize_panel_overlap.py`普查预测完全一致 |
+| ②.5 | `build_sample_panel_subset.py`（**新增**） | `scripts/ecotype_pca/` | **已完成并验证**，把panel从百万级SNP瘦身到样本实际覆盖的几百个位点，`--mask-from`支持leave-one-out场景下"用真古样本的覆盖模式、取模拟样本的值"这种row-对齐需求 |
+| ②.6 | `simulate_leaveoneout_projection.py`（**新增**） | `scripts/ecotype_pca/` | **已完成并验证**，leave-one-out正对照通过，REF/ALT方向确认无误 |
+| ③ | `merge_ancient_into_panel.py` | `scripts/ecotype_pca/` | **已完成并验证** |
+| ④ | `par.PROJECT.template` | `scripts/ecotype_pca/` | 模板仍保留占位符供参考；`run_sample_panel_pca.sh`（**新增**）会为每个样本×panel运行动态生成实际par文件和poplistname，不需要手工套模板 |
+| 批量 | `run_sample_panel_pca.sh` + `summarize_projection_distances.py`（**新增**） | `scripts/ecotype_pca/` | 单条命令跑完①②③④全链路+产出"最近/次近现代群体"报告；16×3=48组合批量铺开**进行中** |
 
 **①做什么**：把besthit过滤后的FASTQ(还没有位置信息、也还没去重)比对到
 `irgsp.fa`，产出带位置信息、已用`samtools markdup`标记重复(不删除，②

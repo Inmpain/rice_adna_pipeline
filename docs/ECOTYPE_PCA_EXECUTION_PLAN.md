@@ -37,6 +37,57 @@ Claude Code 对照仓库真实文件（`oryza_besthit_damage_filter.py` 的
 清单、本分支已推送的 `map_besthit_to_irgsp.sh`）核实无误后才推送——
 沿用的是与本文档其余部分相同的"不直接照抄 GPT 输出"纪律。
 
+**2026-08-13 深夜更新：步骤 3-8 全部完成，第一个真实古样本 × Civáň
+panel 的完整投影已跑出、leave-one-out 正对照已通过**。具体命令见新增
+的 `docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`。这里只记录关键结论，不重复
+命令：
+
+- **集群基础设施发现（阻塞过多次，必须记录）**：`/itp` 只挂载在
+  `node01-node04`，`node06` 完全没挂（`mount | grep itp` 空输出，不是
+  权限问题），`node05` 当时 down。任何 SLURM 作业只要读写路径经过
+  itp 软链接，落到 node06 上就会瞬间失败（`FAILED exit 1:0`，0秒，
+  日志全空）。**以后所有 `sbatch`/`srun` 一律加
+  `--exclude=node05,node06`**（或整个 shell session 开头
+  `export SBATCH_EXCLUDE=node05,node06`）。同时确认：会被 SLURM 计算
+  作业读写的路径（`db/` 下所有参考基因组/panel）不应该做 itp 软链接，
+  itp 只适合"只从登录节点访问、不会被计算作业碰"的冷数据。已写入
+  `~/.claude` 长期记忆，不止是本文档的一次性记录。
+- **三个 panel 的现代群体标签（3.2 节待办 1/2/2c）全部完成**，真实
+  匹配率：29M_3k 3000/3024 (99.2%)、6.7M_720 718/720 (99.7%)、Civáň
+  1055/1056 (99.9%)。三个新脚本
+  `build_29m3k_population_labels.py`/`build_720_population_labels.py`/
+  `build_civan_population_labels.py`，详细设计见各自脚本 docstring
+  （元数据来源、ID 桥接逻辑、标签标准化规则全部写在代码里，不重复贴
+  在文档里）。
+- **无法归类的样本（29M_3k 的 UNK，24个）已从三个 panel 的
+  `.eigenstratgeno`/`.ind` 矩阵里物理删除**（不是留着不参与建轴——
+  `-lsqproject` 会把 `.ind` 里任何不在 `poplistname` 的个体都投影出来，
+  留着不删还是会在图上出现），用 `filter_panel_by_label.py`（`cut -c`
+  精确保留区间，而不是逐行 Python 循环，见脚本注释里的性能考量）。
+  29M_3k 的 `INTERMEDIATE_TYPE`/`JAPONICA_UNSPEC`（135+132个）**保留**
+  不删，只是本来就不在 `poplistname` 里、不参与建轴。
+- **样本专属子集 PCA + leave-one-out 正对照全部跑通并验证通过**：
+  `build_sample_panel_subset.py`、`simulate_leaveoneout_projection.py`
+  两个新脚本，配合已有的 `pseudo_haploid_call.py`/
+  `merge_ancient_into_panel.py`，在 Civáň panel 上用 LV7008416379（147
+  个 TV/MAPQ≥20 位点）做的 leave-one-out 模拟（把已知 indica 样本
+  B006_B006 遮成同样的覆盖模式）投影结果跟 B006_B006 自己用全部位点
+  投影出的真实坐标几乎完全重合（PC1 差 0.0006，PC2 差 0.0001）——
+  **这是 2.1 节悬而未决的 REF/ALT 方向问题第一次有了直接实证**，
+  不再只能靠 `check_ref.py` 的 FASTA 匹配率去推测。
+- **第一个真实古样本的实际投影结果**：LV7008416379 在 Civáň panel 上
+  离 aromatic 群体最近（距离 0.0083），其次是 japonica 各亚群，离
+  indica/aus/野生 O._rufipogon 都明显更远——但这只是 1 个样本、147个
+  SNP、单次抽样的冒烟结果，不代表最终结论，第 6 节的 bootstrap 还没做。
+- **批量铺开的自动化脚本已写好**：`run_sample_panel_pca.sh`（单条命令
+  跑完一个样本×一个panel的调用→子集化→合并→smartpca 全链路，
+  已用 LV7008416379 复核跟手动跑的结果一致）+
+  `summarize_projection_distances.py`（产出"最近/次近群体+距离"的报告
+  格式，正确排除样本量过小的类群比如 Civáň 那几个 n=1 的野生近缘种，
+  避免噪声冒充"最近群体"）。**16样本×3panel=48个组合的批量铺开已经
+  开始但还没跑完**，见 `docs/ECOTYPE_PCA_PHASE1_COMMANDS.md` 的批量
+  提交命令。
+
 ---
 
 ## 1. 下一步执行顺序（10 步，合并两轮 GPT 建议 + 本次核实结果）
@@ -52,24 +103,28 @@ Claude Code 对照仓库真实文件（`oryza_besthit_damage_filter.py` 的
    "本分支自己做后处理"这条路（不是去改 besthit 分支的 KEEP 逻辑），
    两种做法当时就说了选一种，这次选定并落地。具体命令见
    `docs/ECOTYPE_PCA_PHASE0_COMMANDS.md`。
-3. 运行 **Phase 0：IRGSP 覆盖普查**（第 3 节）——用 ORSC 目标读集重新
-   跑 `map_besthit_to_irgsp.sh`（已支持 `INPUT_SUFFIX`/`READSET_LABEL`
-   自定义，见该脚本 2026-08-13 修订说明）+
-   `summarize_panel_overlap.py`（已实现，见第 3 节末尾更新——覆盖了
-   `summarize_irgsp_coverage.sh` 原计划里"panel 交集"这一块，genome-wide
-   覆盖/染色体分布/窗口分布几个字段仍未实现），**不运行 PCA**。
-4. 输出 `sample_panel_overlap.tsv` 总表：每个样本 × 每个 panel
-   (Civáň/404K/4.8M/29M/720) 的真实可调用位点数（见第 3 节表结构）。
-5. 根据第 4 步实测结果，选 2 个代表样本（覆盖最好 + 覆盖最差）。
-6. 继续推进三个 panel 的现代群体标签工作（`ECOTYPE_PCA_PANEL.md`
-   3.2 节待办 1/2/2c，顺序 2→1→2c），与第 3-5 步并行，互不阻塞。
-7. 开发 `build_sample_panel_subset.py`（第 5 节）+
-   `simulate_leaveoneout_projection.py`（第 6 节），先在 Civáň 面板上
-   用第 5 步选出的 2 个样本冒烟。
-8. 用已知现代样本做 leave-one-out 模拟正对照（第 6 节），**同时这一步
-   也是验证 REF/ALT 方向是否正确的权威检验**，见 2.1 节。
-9. 标签匹配 + leave-one-out 正对照都通过后，Civáň、3K、720 三套标签
-   匹配同时推进，冒烟扩大到全部 16 个样本 × 3 个 panel。
+3. **【已完成，2026-08-13】** Phase 0：IRGSP 覆盖普查——最终改用全基因
+   组 `besthit_oryza.fastq.gz` 直接映射（放弃了 ORSC 窄化读集，覆盖度
+   对本来就稀薄的古样本损耗太大，见 `docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`
+   开头的决策记录）+ `summarize_panel_overlap.py`（新增质量过滤 QC
+   拆解，见该脚本 commit 历史，顺带发现 PCR duplicate 率是数据损耗的
+   大头、不是 baseq 过滤，LV7008416349 duplicate 率异常达 69%）。
+4. **【已完成】** `panel_overlap.tsv`/`qc.tsv` 总表已产出（16样本×3panel
+   全跑完），路径见 `docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`。
+5. **【已完成】** 代表样本选定：LV7008416379（覆盖最好，TV轨可调用位点
+   数三个panel加总6835）、LV7008416294（覆盖最差，加总352）——用真实
+   普查数据验证，不是拍脑袋选的。
+6. **【已完成】** 三个 panel 现代群体标签全部匹配完成，见本节上方
+   2026-08-13 深夜更新块的汇总数字。
+7. **【已完成并验证】** `build_sample_panel_subset.py` +
+   `simulate_leaveoneout_projection.py` 已开发，在 Civáň panel 用
+   LV7008416379 冒烟测试通过。
+8. **【已完成，结论：REF/ALT 方向正确】** leave-one-out 正对照
+   （B006_B006 模拟）投影结果跟其真实全位点投影几乎完全重合，见本节
+   上方汇总。
+9. **【进行中】** 16样本×3panel=48组合批量铺开——自动化脚本
+   `run_sample_panel_pca.sh` 已写好并复核，批量提交已开始但截至本次
+   更新还没跑完，见 `docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`。
 10. 根据 16 个样本在 404K/4.8M/2.36M(Civáň)/6.7M 中的实测可调用位点数，
     决定每个样本最终用哪个密度的 panel（第 4 节的优先级表），不预设
     "29M 最密就该用 29M"。
