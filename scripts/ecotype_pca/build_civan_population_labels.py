@@ -24,34 +24,50 @@ first and falls back to the sample ID unchanged (not doubled) when it
 doesn't match, rather than hard-failing -- both forms are confirmed-real
 cases here, not a guess.
 
-WHY THIS SCRIPT DOES NOT STANDARDIZE THE LABEL, UNLIKE THE OTHER TWO
-build_*_population_labels.py SCRIPTS: Table_S1.csv's header is messy
-(quoted fields containing literal newlines break naive line-based
-reading -- must use Python's csv module) and this script's author could
-not get a clean, exhaustive list of the "Group" column's actual values
-from the server before writing this (unlike NB_final_snp.ind's 8-value
-xlsx column, which was fully scanned first). The raw "Group" value is
-therefore used AS THE LABEL VERBATIM, and "Species" is carried in the
-report alongside it for context. Once a real run's [labels] stderr
-summary shows the true value distribution, a standardization mapping
-(if one is even needed -- Civáň's Group column may already use clean
-values like "indica"/"japonica"/"aus"/"aromatic") can be added as a
-followup, the same way NB_final_snp.ind's mapping was built from an
-observed value list rather than guessed in advance.
+WILD-SAMPLE ID BRIDGE: the 461 wild samples are "plain"-form ERR-style
+run accessions in civan_snp.ind, but Table_S1.csv identifies wild
+accessions by the paper's own "W####" names (confirmed on the real
+files: a first run against Table_S1.csv alone matched all 595
+cultivated samples and exactly 0 of the 461 wild ones). Table_S2.csv
+(nominally "chloroplast assembly QC") turns out to carry a direct,
+1:1, sequential Accession<->"SRA dataset used" mapping for these same
+W#### names (W0101->ERR068593, W0102->ERR068594, ... confirmed on the
+real file) -- --table-s2 is optional specifically so this bridge can be
+skipped if Table_S2.csv's coverage turns out incomplete (it has 1,645
+rows against 1,825 total chloroplast genomes, a known partial-coverage
+gap per docs/ECOTYPE_PCA_PANEL.md 1.3, so it may not cover all 461
+nuclear-SNP wild samples either -- this run's [labels] summary reports
+exactly how many it resolves).
 
-Table_S1.csv is also known (docs/ECOTYPE_PCA_PANEL.md 1.3) to have 1,063
-data rows against a paper-stated 1,056 samples -- 7 more than expected,
-cause unconfirmed. Rather than hard-failing on a duplicate Accession (as
-the other two scripts do, where duplicates would be a genuine anomaly),
-this script tolerates duplicate Accession values in Table_S1.csv
-(last-row-wins) and reports the duplicate count, since this file is
-already a known, unexplained edge case -- a hard failure here would
-block ever seeing the real numbers needed to explain it.
+WHY THIS SCRIPT DOES NOT STANDARDIZE THE LABEL, UNLIKE THE OTHER TWO
+build_*_population_labels.py SCRIPTS: unlike NB_final_snp.ind's 8-value
+xlsx column (fully scanned before that mapping was written), Civáň's
+Table_S1.csv "Group" column values weren't known ahead of time because
+its messy header (quoted fields containing literal newlines, 1,024
+columns of which 1,013 are blank -- an Excel export artifact) initially
+blocked reading it at all. The raw "Group" value is therefore used AS
+THE LABEL VERBATIM (a real run now shows it's already clean: indica/aus/
+aromatic/"japonica (tropical)"/"japonica (temperate)"/unqualified
+"japonica", matching the paper's stated 283/124/34/80/51/23 split
+exactly) and "Species" is carried in the report for context. A
+standardization mapping to IND/AUS/ARO/TRJ/TEJ (folding the unqualified
+"japonica" into JAPONICA_UNSPEC, matching NB_final_snp.ind's convention)
+can be layered on as a followup now that the value list is confirmed.
+
+Table_S1.csv was also feared (docs/ECOTYPE_PCA_PANEL.md 1.3, based on a
+raw `wc -l`) to have 1,063 data rows against a paper-stated 1,056 -- a
+proper CSV-aware read (this script) finds only 1,057, and the 6-line gap
+was `wc -l` counting literal newlines embedded inside quoted header
+cells as extra "lines", not a real data discrepancy. The single
+remaining extra row is tolerated via last-row-wins on duplicate
+Accession (reported, not hard-failed on, since this is an already-messy
+file where a hard stop would block ever seeing the real numbers).
 
 Usage:
   python3 build_civan_population_labels.py \\
     --ind /home/scratch/yinmt202607/db/paper1/civan_snp.ind \\
     --table-s1 /home/scratch/yinmt202607/db/paper1/Table_S1.csv \\
+    --table-s2 /home/scratch/yinmt202607/db/paper1/Table_S2.csv \\
     --out /home/scratch/yinmt202607/db/paper1/civan_snp.labeled.ind \\
     --report /home/scratch/yinmt202607/db/paper1/civan_snp.label_report.tsv
 """
@@ -71,6 +87,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ind", required=True, help="path to civan_snp.ind")
     parser.add_argument("--table-s1", required=True, help="path to Civáň et al. 2019 Table_S1.csv")
+    parser.add_argument(
+        "--table-s2",
+        default=None,
+        help="optional path to Table_S2.csv, bridges wild-sample ERR-style IDs to Table_S1's W#### accessions",
+    )
     parser.add_argument("--out", required=True, help="path for the new .ind with real labels")
     parser.add_argument("--report", required=True, help="path for a per-sample coverage TSV")
     parser.add_argument(
@@ -86,6 +107,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise FileNotFoundError(f".ind file not found: {args.ind}")
     if not Path(args.table_s1).is_file():
         raise FileNotFoundError(f"Table_S1.csv not found: {args.table_s1}")
+    if args.table_s2 is not None and not Path(args.table_s2).is_file():
+        raise FileNotFoundError(f"Table_S2.csv not found: {args.table_s2}")
 
 
 def recover_accession(sample_id: str) -> tuple[str, str]:
@@ -128,6 +151,32 @@ def load_table_s1(path: Path) -> tuple[dict[str, tuple[str, str]], int, int]:
     return lookup, total_rows, duplicate_count
 
 
+def load_table_s2(path: Path) -> dict[str, str]:
+    """Return SRA-run-accession ("SRA dataset used" column) -> Table_S1 Accession."""
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.reader(handle)
+        header = next(reader)
+        if len(header) < 3:
+            raise ValueError(f"Table_S2.csv header has only {len(header)} columns, expected at least 3 (Accession, Species/group, SRA dataset used)")
+        if header[0].strip() != "Accession":
+            raise ValueError(f"Table_S2.csv column 0 is {header[0]!r}, expected 'Accession'")
+        if header[2].strip() != "SRA dataset used":
+            raise ValueError(f"Table_S2.csv column 2 is {header[2]!r}, expected 'SRA dataset used'")
+
+        bridge: dict[str, str] = {}
+        for row in reader:
+            if not any(cell.strip() for cell in row):
+                continue
+            accession = row[0].strip()
+            sra_id = row[2].strip() if len(row) > 2 else ""
+            if not accession or not sra_id:
+                continue
+            # last-row-wins, matching load_table_s1's tolerance for this
+            # already-messy file family rather than hard-failing
+            bridge[sra_id] = accession
+    return bridge
+
+
 def load_ind(ind_path: Path) -> list[tuple[str, str, str]]:
     rows: list[tuple[str, str, str]] = []
     seen: set[str] = set()
@@ -166,6 +215,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         validate_args(args)
         table_s1, total_rows, dup_count = load_table_s1(Path(args.table_s1))
+        table_s2 = load_table_s2(Path(args.table_s2)) if args.table_s2 else {}
         ind_rows = load_ind(Path(args.ind))
 
         report_rows = []
@@ -173,12 +223,21 @@ def main(argv: list[str] | None = None) -> int:
         label_counts: Counter[str] = Counter()
         species_group_counts: Counter[tuple[str, str]] = Counter()
         method_counts: Counter[str] = Counter()
+        bridge_used_count = 0
         n_matched = 0
 
         for sample_id, sex, _old_label in ind_rows:
             accession, method = recover_accession(sample_id)
             method_counts[method] += 1
             meta = table_s1.get(accession)
+            bridged = False
+            if meta is None and accession in table_s2:
+                bridged_accession = table_s2[accession]
+                meta = table_s1.get(bridged_accession)
+                if meta is not None:
+                    accession = bridged_accession
+                    bridged = True
+                    bridge_used_count += 1
             if meta is None:
                 final_label = args.unmapped_label
                 species, group = "", ""
@@ -193,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
                     "sample_id": sample_id,
                     "accession": accession,
                     "id_method": method,
+                    "via_table_s2_bridge": bridged,
                     "species": species,
                     "final_label": final_label,
                 }
@@ -205,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
             writer = csv.DictWriter(
                 handle,
                 delimiter="\t",
-                fieldnames=["sample_id", "accession", "id_method", "species", "final_label"],
+                fieldnames=["sample_id", "accession", "id_method", "via_table_s2_bridge", "species", "final_label"],
             )
             writer.writeheader()
             writer.writerows(report_rows)
@@ -217,6 +277,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"[labels] Table_S1.csv: {total_rows} data rows, {dup_count} duplicate Accession values (last wins)", file=sys.stderr)
+    print(f"[labels] Table_S2.csv bridge: {len(table_s2)} SRA-id->Accession entries loaded, used for {bridge_used_count} samples", file=sys.stderr)
     print(
         f"[labels] total .ind samples: {len(ind_rows)} "
         f"(doubled-ID form: {method_counts.get('doubled', 0)}, plain-ID form: {method_counts.get('plain', 0)}), "
