@@ -88,6 +88,7 @@ from __future__ import annotations
 import argparse
 import csv
 import os
+import re
 import sys
 import tempfile
 from collections import Counter
@@ -120,6 +121,21 @@ def validate_args(args: argparse.Namespace) -> None:
         raise FileNotFoundError(f"Table_S1.csv not found: {args.table_s1}")
     if args.table_s2 is not None and not Path(args.table_s2).is_file():
         raise FileNotFoundError(f"Table_S2.csv not found: {args.table_s2}")
+
+
+def sanitize_label(value: str) -> str:
+    """Collapse internal whitespace to '_' so the label is one token.
+
+    EIGENSTRAT .ind is whitespace-delimited (sample, sex, label) -- any
+    consumer that splits on whitespace (smartpca itself, and this
+    project's own filter_panel_by_label.py) will misparse a label
+    containing a literal space. Confirmed on the real file: raw Group
+    values like "japonica (tropical)" and Species values like
+    "O. rufipogon" both contain one, and this was NOT caught until
+    filter_panel_by_label.py hard-failed on a real run against the
+    server's civan_snp.labeled.ind.
+    """
+    return re.sub(r"\s+", "_", value.strip())
 
 
 def recover_accession(sample_id: str) -> tuple[str, str]:
@@ -255,7 +271,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 species, group = meta
                 if group and group != "-":
-                    final_label = group
+                    final_label = sanitize_label(group)
                 elif species:
                     # Table_S1.csv leaves Group as "-" for every wild
                     # accession (confirmed on the real file), which is not
@@ -265,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
                     # O. longistaminata, confirmed on the real file). Fall
                     # back to Species so these don't get silently merged
                     # into the same population label as O. rufipogon.
-                    final_label = species
+                    final_label = sanitize_label(species)
                 else:
                     final_label = args.unmapped_label
                 n_matched += 1
