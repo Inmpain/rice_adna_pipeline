@@ -11,6 +11,13 @@ quality tracks (default Q0 and Q20) are retained side by side. Each EIGENSTRAT
 The distinction prevents coverage from being mistaken for a callable panel SNP.
 "callable_tv" applies the same transversion-only restriction as the main
 pseudo-haploid analysis; "callable_all" includes transitions as well.
+
+A ``[qc]`` line is always printed to stderr breaking down every pileup entry
+seen in the BAM by why it was excluded (read flags, missing query position,
+sub-threshold base quality, sub-threshold mapping quality) versus how many
+bases actually passed each mapping-quality track. Pass ``--qc-out`` to also
+write this breakdown as a one-row TSV, so filter-driven data loss on a thin
+ancient-DNA sample is visible instead of silently dropped.
 """
 
 from __future__ import annotations
@@ -66,6 +73,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="repeatable LABEL=/path/to/panel.snp",
     )
     parser.add_argument("--out", required=True)
+    parser.add_argument(
+        "--qc-out",
+        default=None,
+        help="optional path to write per-sample BAM-level quality-filter counts as TSV",
+    )
     parser.add_argument("--min-baseq", type=int, default=20)
     parser.add_argument("--low-mapq", type=int, default=0)
     parser.add_argument("--high-mapq", type=int, default=20)
@@ -131,7 +143,9 @@ def build_coverage_index(
                 low_bases: set[str] = set()
                 high_bases: set[str] = set()
                 for pileup_read in column.pileups:
+                    qc["pileup_entries_total"] += 1
                     if pileup_read.is_del or pileup_read.is_refskip:
+                        qc["excluded_del_or_refskip"] += 1
                         continue
                     aln = pileup_read.alignment
                     if (
@@ -141,20 +155,30 @@ def build_coverage_index(
                         or aln.is_supplementary
                         or aln.is_qcfail
                     ):
+                        qc["excluded_flag_dup_secondary_supp_qcfail_unmapped"] += 1
                         continue
                     query_position = pileup_read.query_position
                     if query_position is None or aln.query_sequence is None:
+                        qc["excluded_no_query_position"] += 1
                         continue
                     qualities = aln.query_qualities
                     if qualities is None or qualities[query_position] < min_baseq:
+                        qc["excluded_low_baseq"] += 1
                         continue
                     base = aln.query_sequence[query_position].upper()
                     if base not in BASES:
+                        qc["excluded_non_acgt_base"] += 1
                         continue
-                    if aln.mapping_quality >= low_mapq:
-                        low_bases.add(base)
+                    if aln.mapping_quality < low_mapq:
+                        qc["excluded_low_mapq_below_low"] += 1
+                        continue
+                    low_bases.add(base)
+                    qc["bases_pass_low_mapq"] += 1
                     if aln.mapping_quality >= high_mapq:
                         high_bases.add(base)
+                        qc["bases_pass_high_mapq"] += 1
+                    else:
+                        qc["bases_mid_mapq_low_only"] += 1
                 if low_bases:
                     coverage[(contig, column.reference_pos + 1)] = (
                         frozenset(low_bases),
@@ -305,6 +329,51 @@ def write_summary(
         raise
 
 
+QC_FIELDS = [
+    "sample", "min_baseq", "low_mapq", "high_mapq", "bam_references",
+    "pileup_entries_total", "excluded_del_or_refskip",
+    "excluded_flag_dup_secondary_supp_qcfail_unmapped",
+    "excluded_no_query_position", "excluded_low_baseq", "excluded_non_acgt_base",
+    "excluded_low_mapq_below_low", "bases_mid_mapq_low_only", "bases_pass_low_mapq",
+    "bases_pass_high_mapq", "covered_genome_positions_low", "covered_genome_positions_high",
+]
+
+
+def qc_summary_line(sample: str, qc: Counter[str]) -> str:
+    return (
+        f"[qc] {sample}: pileup_entries={qc['pileup_entries_total']} "
+        f"excluded_flags={qc['excluded_flag_dup_secondary_supp_qcfail_unmapped']} "
+        f"excluded_low_baseq={qc['excluded_low_baseq']} "
+        f"excluded_low_mapq={qc['excluded_low_mapq_below_low']} "
+        f"bases_pass_low_mapq={qc['bases_pass_low_mapq']} "
+        f"bases_pass_high_mapq={qc['bases_pass_high_mapq']}"
+    )
+
+
+def write_qc_summary(args: argparse.Namespace, qc: Counter[str]) -> None:
+    output = Path(args.qc_out)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".tmp", dir=output.parent)
+    os.close(fd)
+    tmp_path = Path(tmp_name)
+    try:
+        with tmp_path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, delimiter="\t", fieldnames=QC_FIELDS)
+            writer.writeheader()
+            row = {
+                "sample": args.sample,
+                "min_baseq": args.min_baseq,
+                "low_mapq": args.low_mapq,
+                "high_mapq": args.high_mapq,
+            }
+            row.update({field: qc[field] for field in QC_FIELDS if field not in row})
+            writer.writerow(row)
+        os.replace(tmp_path, output)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
@@ -314,6 +383,10 @@ def main(argv: list[str] | None = None) -> int:
             Path(args.bam), args.min_baseq, args.low_mapq, args.high_mapq
         )
         write_summary(args, coverage, qc)
+        print(qc_summary_line(args.sample, qc), file=sys.stderr)
+        if args.qc_out:
+            write_qc_summary(args, qc)
+            print(f"[qc] wrote {args.qc_out}", file=sys.stderr)
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
