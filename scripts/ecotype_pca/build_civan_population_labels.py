@@ -7,19 +7,22 @@ The panel's .ind file currently carries a single placeholder value,
 "???", in its population column for all 1,056 samples -- this is
 docs/ECOTYPE_PCA_PANEL.md section 3.2 todo item 2c.
 
-ID FORMAT: every civan_snp.ind sample ID is the underlying accession
-name duplicated around a literal underscore -- "B006" becomes
-"B006_B006", "IRIS_313-9986" (itself containing an underscore) becomes
-"IRIS_313-9986_IRIS_313-9986". This is plink2's default FID_IID
-behavior when converting a VCF whose samples have no separate
-family/individual ID (see docs/ECOTYPE_PCA_PANEL.md 1.3/5.6). Recovering
-the real accession therefore CANNOT be done by splitting on the first
-or last underscore (that breaks for accessions like "IRIS_313-9986"
-which contain underscores themselves) -- it must find the exact
-midpoint: the string has odd length 2n+1, character n is '_', and the
-two n-character halves are identical. recover_accession() below does
-exactly that and returns None (hard error) if a sample ID doesn't fit
-this pattern, since every sample so far has been confirmed to follow it.
+ID FORMAT: civan_snp.ind mixes samples from sub-collections that entered
+the source VCF with and without a pre-existing FID. Samples that had none
+got plink2's default FID_IID self-duplication around a literal underscore
+-- "B006" becomes "B006_B006", "IRIS_313-9986" (itself containing an
+underscore) becomes "IRIS_313-9986_IRIS_313-9986" (see
+docs/ECOTYPE_PCA_PANEL.md 1.3/5.6). Samples that already had a real FID
+(confirmed on the real file: "ERR068593"-style IDs) were NOT doubled and
+appear in civan_snp.ind exactly as in Table_S1.csv's Accession column.
+Recovering the doubled form CANNOT be done by splitting on the first or
+last underscore (that breaks for accessions like "IRIS_313-9986" which
+contain underscores themselves) -- it must find the exact midpoint: the
+string has odd length 2n+1, character n is '_', and the two n-character
+halves are identical. recover_accession() below checks for that pattern
+first and falls back to the sample ID unchanged (not doubled) when it
+doesn't match, rather than hard-failing -- both forms are confirmed-real
+cases here, not a guess.
 
 WHY THIS SCRIPT DOES NOT STANDARDIZE THE LABEL, UNLIKE THE OTHER TWO
 build_*_population_labels.py SCRIPTS: Table_S1.csv's header is messy
@@ -85,17 +88,14 @@ def validate_args(args: argparse.Namespace) -> None:
         raise FileNotFoundError(f"Table_S1.csv not found: {args.table_s1}")
 
 
-def recover_accession(sample_id: str) -> str | None:
+def recover_accession(sample_id: str) -> tuple[str, str]:
+    """Return (accession, method), method is 'doubled' or 'plain'."""
     n = len(sample_id)
-    if n % 2 == 0:
-        return None
-    mid = n // 2
-    if sample_id[mid] != "_":
-        return None
-    first_half, second_half = sample_id[:mid], sample_id[mid + 1 :]
-    if first_half != second_half:
-        return None
-    return first_half
+    if n % 2 == 1:
+        mid = n // 2
+        if sample_id[mid] == "_" and sample_id[:mid] == sample_id[mid + 1 :]:
+            return sample_id[:mid], "doubled"
+    return sample_id, "plain"
 
 
 def load_table_s1(path: Path) -> tuple[dict[str, tuple[str, str]], int, int]:
@@ -172,19 +172,12 @@ def main(argv: list[str] | None = None) -> int:
         new_ind_lines = []
         label_counts: Counter[str] = Counter()
         species_group_counts: Counter[tuple[str, str]] = Counter()
-        n_recovered = 0
+        method_counts: Counter[str] = Counter()
         n_matched = 0
 
         for sample_id, sex, _old_label in ind_rows:
-            accession = recover_accession(sample_id)
-            if accession is None:
-                raise ValueError(
-                    f"sample ID {sample_id!r} does not fit the expected "
-                    "'ACCESSION_ACCESSION' self-duplicated pattern -- every "
-                    "sample seen so far has fit it, so this is treated as a "
-                    "hard error rather than silently guessed at."
-                )
-            n_recovered += 1
+            accession, method = recover_accession(sample_id)
+            method_counts[method] += 1
             meta = table_s1.get(accession)
             if meta is None:
                 final_label = args.unmapped_label
@@ -199,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     "sample_id": sample_id,
                     "accession": accession,
+                    "id_method": method,
                     "species": species,
                     "final_label": final_label,
                 }
@@ -211,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
             writer = csv.DictWriter(
                 handle,
                 delimiter="\t",
-                fieldnames=["sample_id", "accession", "species", "final_label"],
+                fieldnames=["sample_id", "accession", "id_method", "species", "final_label"],
             )
             writer.writeheader()
             writer.writerows(report_rows)
@@ -223,7 +217,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"[labels] Table_S1.csv: {total_rows} data rows, {dup_count} duplicate Accession values (last wins)", file=sys.stderr)
-    print(f"[labels] total .ind samples: {len(ind_rows)}, accession recovered: {n_recovered}, matched Table_S1.csv: {n_matched}", file=sys.stderr)
+    print(
+        f"[labels] total .ind samples: {len(ind_rows)} "
+        f"(doubled-ID form: {method_counts.get('doubled', 0)}, plain-ID form: {method_counts.get('plain', 0)}), "
+        f"matched Table_S1.csv: {n_matched}",
+        file=sys.stderr,
+    )
     print("[labels] final label (raw Group value) distribution:", file=sys.stderr)
     for label, count in label_counts.most_common():
         print(f"[labels]   {label}: {count}", file=sys.stderr)
