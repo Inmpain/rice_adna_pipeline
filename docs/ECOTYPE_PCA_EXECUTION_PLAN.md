@@ -28,19 +28,36 @@ IndexError 崩溃路径、`map_besthit_to_irgsp.sh` 确实跳过了主流程的
 工作，以及第 10 节的旱稻/水稻生态型 panel (Lyu 2014) 工作，理由和
 适用条件见第 10 节末尾。
 
+**2026-08-13 更新**：第 1 节步骤 2（ORSC 分级）已完成，见该步骤标注和
+`docs/ECOTYPE_PCA_PHASE0_COMMANDS.md`（新增的具体命令 runbook，与
+本文档配合读——本文档是设计/待办清单，那份文档是照着抄命令用的服务器
+操作手册）。这一批代码由 GPT（用户在其沙箱环境里跑的会话）编写，
+Claude Code 对照仓库真实文件（`oryza_besthit_damage_filter.py` 的
+`decisions.tsv.gz` 列名、`submit_oryza_besthit.sh` 里记录的 v1 taxid
+清单、本分支已推送的 `map_besthit_to_irgsp.sh`）核实无误后才推送——
+沿用的是与本文档其余部分相同的"不直接照抄 GPT 输出"纪律。
+
 ---
 
 ## 1. 下一步执行顺序（10 步，合并两轮 GPT 建议 + 本次核实结果）
 
 1. **【已完成，见第 2 节】** 修复三处代码问题：REF/ALT 方向判定文档
    纠正、比对去重与主流程对齐、合并脚本硬检查+原子写入。
-2. 去 `codex/oryza-competitive-mapping` 分支核实 `target_aa_complex`
-   /`oryza_genus`/`other_oryza` 分级输出是否已经存在
-   (`ECOTYPE_PCA_PANEL.md` 3.2 节待办 0b)。**这一步必须先做**，否则
-   Phase 0 覆盖普查的输入范围本身就是错的。
-3. 运行 **Phase 0：IRGSP 覆盖普查**（第 3 节）——16 个样本全部跑
-   `map_besthit_to_irgsp.sh`（已修复版）+ 新增的
-   `summarize_irgsp_coverage.sh`，**不运行 PCA**。
+2. **【已完成，2026-08-13】** ORSC 分级：`scripts/oryza_besthit/
+   split_besthit_taxonomic_tiers.py` 复用 besthit 已有的
+   `decisions.tsv.gz` 逐 read 物种归属，把全 Oryza 属的 KEEP 集合拆成
+   目标 `target_orsc`（*O. rufipogon* 4529 + *O. sativa* 4530 +
+   *O. nivara* 4536）和 `other_oryza` 两个 FASTQ，不重跑 competitive
+   mapping。走的是 `ECOTYPE_PCA_PANEL.md` 3.2 节待办 0b 里预先批准的
+   "本分支自己做后处理"这条路（不是去改 besthit 分支的 KEEP 逻辑），
+   两种做法当时就说了选一种，这次选定并落地。具体命令见
+   `docs/ECOTYPE_PCA_PHASE0_COMMANDS.md`。
+3. 运行 **Phase 0：IRGSP 覆盖普查**（第 3 节）——用 ORSC 目标读集重新
+   跑 `map_besthit_to_irgsp.sh`（已支持 `INPUT_SUFFIX`/`READSET_LABEL`
+   自定义，见该脚本 2026-08-13 修订说明）+
+   `summarize_panel_overlap.py`（已实现，见第 3 节末尾更新——覆盖了
+   `summarize_irgsp_coverage.sh` 原计划里"panel 交集"这一块，genome-wide
+   覆盖/染色体分布/窗口分布几个字段仍未实现），**不运行 PCA**。
 4. 输出 `sample_panel_overlap.tsv` 总表：每个样本 × 每个 panel
    (Civáň/404K/4.8M/29M/720) 的真实可调用位点数（见第 3 节表结构）。
 5. 根据第 4 步实测结果，选 2 个代表样本（覆盖最好 + 覆盖最差）。
@@ -121,6 +138,13 @@ MAPQ 30 用于正式 SNP calling（与主流程一致），MAPQ 20 保留作敏�
 分析对照——这与用户原话"正式 SNP 调用建议与原主流程一致使用 MAPQ 30；
 MAPQ20可以保留为敏感性分析"完全对应。
 
+**2026-08-13 更新**：`map_besthit_to_irgsp.sh` 又做了一次向后兼容的
+泛化（新增 `INPUT_SUFFIX`/`READSET_LABEL` 环境变量，默认值等于原来
+硬编码的行为），用于复用同一套映射/去重逻辑处理 ORSC 目标读集，见第 1
+节步骤 2 和 `docs/ECOTYPE_PCA_PHASE0_COMMANDS.md`。**注意**：两个读集
+必须用不同的 `OUT_DIR`——`.finished` 标记不按 `READSET_LABEL` 区分，
+共用 `OUT_DIR` 会导致第二个读集的运行被错误跳过。
+
 ### 2.3 合并脚本硬检查——已修复真实 bug
 
 核实确认 GPT 指出的问题都是真实存在的：
@@ -196,6 +220,17 @@ LV...      720_6.7m      6.7Mxxx           ...           ...              ...
 
 不做"16 个样本共同覆盖交集"——古 DNA 覆盖本来就稀疏，16 个样本再求
 公共交集大概率趋近于零，这条路径直接不采用（GPT 原话已指出，采纳）。
+
+**2026-08-13 更新**：`scripts/ecotype_pca/summarize_panel_overlap.py`
+已实现并推送（GPT 编写，核实通过），单独跑一个 BAM 对多个 panel 一次
+性求交，覆盖了上面这张表里"panel 交集"和"位点质量"两行——`covered`
+(≥1条read覆盖)/`allele_supported`(read碱基匹配panel任一等位基因)两级
+区分，Q0/Q20 两档 MAPQ 并行统计，TV/ALL 两版可调用数都有。**仍未实现
+的部分**：全基因组覆盖比例、染色体分布、窗口分布这三行——这些是
+`summarize_irgsp_coverage.sh`（原计划名）剩下还没做的部分，如果需要
+可以另开一个脚本只做这几项，或者给 `summarize_panel_overlap.py` 加
+选项扩展，两种做法都行，还没决定。命令示例见
+`docs/ECOTYPE_PCA_PHASE0_COMMANDS.md` 第 4 节。
 
 ---
 
@@ -362,8 +397,8 @@ poplistname.smoke.txt → 只写一行 "Modern"
 
 ## 9. `par.PROJECT.template` 需要补充的参数
 
-现有模板故意留空 `poplistname`（等标签工作完成）。除此之外，模板还
-应包含（如果当前版本没有，视为待补）：
+**2026-08-13：已落地**——`numchrom: 12` 和 `numthreads: 8` 已加入模板
+（`lsqproject: YES`/`numoutlieriter: 0` 之前已经在模板里），四项齐全：
 
 ```
 numchrom:       12
