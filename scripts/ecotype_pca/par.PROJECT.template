@@ -35,3 +35,5 @@ poplistname:     poplistname.[PANEL].txt
 lsqproject:      YES
 numoutevec:      10
 numoutlieriter:  0
+numchrom:        12
+numthreads:      8
