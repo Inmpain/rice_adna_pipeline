@@ -33,7 +33,7 @@
 #   - the per-sample summary line reports mapped-primary reads via
 #     samtools view -c -F 4, plus separate MAPQ>=30/MAPQ>=20 counts.
 #
-# 2026-08-12 SECOND revision (this one): restructured to match this repo's
+# 2026-08-12 SECOND revision: restructured to match this repo's
 # established `submit_oryza_besthit.sh` pattern (codex/oryza-competitive-
 # mapping branch) -- one SLURM job PER SAMPLE instead of one sequential
 # for-loop processing all samples in a single shell/job. Running 16
@@ -58,6 +58,18 @@
 # load_tools() below does automatically, same convention as
 # scripts/oryza_besthit/submit_oryza_competitive_mapping.sh's
 # load_samtools_module() (codex/oryza-competitive-mapping branch).
+#
+# 2026-08-13 THIRD revision: generalized to support the ORSC-narrowed
+# target read set (see scripts/oryza_besthit/split_besthit_taxonomic_tiers.py)
+# without touching the already-finished whole-genus BAMs. INPUT_SUFFIX and
+# READSET_LABEL default to the exact previous hardcoded values
+# (.besthit_oryza.fastq.gz / besthit_oryza), so default invocation is
+# byte-for-byte unchanged -- point BESTHIT_DIR/INPUT_SUFFIX/READSET_LABEL/
+# OUT_DIR at the taxonomic_tiers output + a NEW out dir to run the ORSC
+# readset instead (see docs/ECOTYPE_PCA_PHASE0_COMMANDS.md). Two readsets
+# must use different OUT_DIR -- the .finished marker is not namespaced by
+# READSET_LABEL, so sharing OUT_DIR between two readsets for the same
+# sample would make the second readset's run silently skip.
 
 set -Eeuo pipefail
 
@@ -72,7 +84,13 @@ trap report_error ERR
 # Paths / config. Environment variables with the same names override these.
 # -----------------------------------------------------------------------------
 
+# INPUT_SUFFIX makes the mapper reusable for the taxonomically narrowed read
+# set without overwriting the existing whole-genus BAMs. For the new ORSC run:
+#   BESTHIT_DIR=.../taxonomic_tiers INPUT_SUFFIX=.target_orsc.fastq.gz \
+#   READSET_LABEL=target_orsc OUT_DIR=.../bam_irgsp_orsc ./map... submit all
 BESTHIT_DIR="${BESTHIT_DIR:-/home/scratch/yinmt202607/gene/results/oryza_competitive_mapping/besthit}"
+INPUT_SUFFIX="${INPUT_SUFFIX:-.besthit_oryza.fastq.gz}"
+READSET_LABEL="${READSET_LABEL:-besthit_oryza}"
 IRGSP_FA="${IRGSP_FA:-/home/scratch/yinmt202607/db/asian_rice_panel_index/irgsp.fa}"
 OUT_DIR="${OUT_DIR:-/home/scratch/yinmt202607/gene/results/ecotype_pca/bam_irgsp}"
 LOG_DIR="${OUT_DIR}/logs"
@@ -104,7 +122,7 @@ Usage:
 
   map_besthit_to_irgsp.sh submit all
       Same, but auto-discovers every sample with a
-      <sample>.besthit_oryza.fastq.gz under BESTHIT_DIR.
+      <sample><INPUT_SUFFIX> under BESTHIT_DIR.
 
   map_besthit_to_irgsp.sh local SAMPLE [SAMPLE ...] | local all
       Same worker as submit, but sequential in the foreground -- no
@@ -117,6 +135,14 @@ EOF
 }
 
 report_error_reset() { trap report_error ERR; }
+
+validate_readset_config() {
+    [[ -n "$INPUT_SUFFIX" ]] || { echo "ERROR: INPUT_SUFFIX must not be empty" >&2; return 1; }
+    [[ "$READSET_LABEL" =~ ^[A-Za-z0-9_.-]+$ ]] || {
+        echo "ERROR: READSET_LABEL contains unsafe filename characters: $READSET_LABEL" >&2
+        return 1
+    }
+}
 
 timestamp() {
     date --iso-8601=seconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S%z'
@@ -146,22 +172,23 @@ sbatch_common_args() {
 }
 
 fastq_path() {
-    printf '%s/%s.besthit_oryza.fastq.gz\n' "$BESTHIT_DIR" "$1"
+    printf '%s/%s%s\n' "$BESTHIT_DIR" "$1" "$INPUT_SUFFIX"
 }
 
 discover_samples() {
+    validate_readset_config
     [[ -d "$BESTHIT_DIR" ]] || {
         echo "ERROR: BESTHIT_DIR not found: $BESTHIT_DIR" >&2
         return 1
     }
     shopt -s nullglob
-    local files=("$BESTHIT_DIR"/*.besthit_oryza.fastq.gz)
+    local files=("$BESTHIT_DIR"/*"$INPUT_SUFFIX")
     shopt -u nullglob
     SAMPLES=()
     local f base
     for f in "${files[@]}"; do
         base="$(basename "$f")"
-        SAMPLES+=("${base%.besthit_oryza.fastq.gz}")
+        SAMPLES+=("${base%${INPUT_SUFFIX}}")
     done
 }
 
@@ -188,15 +215,18 @@ validate_slurm_request() {
 
 run_check() {
     echo "[check] BESTHIT_DIR=$BESTHIT_DIR"
+    echo "[check] INPUT_SUFFIX=$INPUT_SUFFIX READSET_LABEL=$READSET_LABEL"
     echo "[check] IRGSP_FA=$IRGSP_FA"
     echo "[check] OUT_DIR=$OUT_DIR"
     echo "[check] partition=$SLURM_PARTITION account=${SLURM_ACCOUNT:-<default>}"
+
+    validate_readset_config
 
     [[ -f "$IRGSP_FA" ]] || { echo "ERROR: IRGSP_FA missing: $IRGSP_FA" >&2; exit 1; }
 
     discover_samples
     [[ "${#SAMPLES[@]}" -gt 0 ]] || {
-        echo "ERROR: no *.besthit_oryza.fastq.gz under $BESTHIT_DIR" >&2
+        echo "ERROR: no *${INPUT_SUFFIX} under $BESTHIT_DIR" >&2
         exit 1
     }
     echo "[check] samples with a besthit FASTQ: ${#SAMPLES[@]}"
@@ -211,6 +241,7 @@ run_worker() {
     # Internal: invoked as the sbatch job body. Args: sample outdir
     [[ "$#" -ge 2 ]] || { usage >&2; exit 2; }
     local sample="$1" outdir="$2"
+    validate_readset_config
     local fq
     fq="$(fastq_path "$sample")"
     [[ -f "$fq" ]] || { echo "ERROR: besthit FASTQ missing for $sample: $fq" >&2; exit 1; }
@@ -233,15 +264,16 @@ run_worker() {
     samtools collate -@ "$JOB_CPUS" -O "$outdir/${sample}.sorted.bam" \
         | samtools fixmate -@ "$JOB_CPUS" -m - - \
         | samtools sort -@ "$JOB_CPUS" -o "$outdir/${sample}.fixmate_sorted.bam" -
-    samtools markdup -@ "$JOB_CPUS" "$outdir/${sample}.fixmate_sorted.bam" "$outdir/${sample}.besthit_oryza.irgsp.bam"
-    samtools index "$outdir/${sample}.besthit_oryza.irgsp.bam"
+    local final_bam="$outdir/${sample}.${READSET_LABEL}.irgsp.bam"
+    samtools markdup -@ "$JOB_CPUS" "$outdir/${sample}.fixmate_sorted.bam" "$final_bam"
+    samtools index "$final_bam"
     rm -f "$outdir/${sample}.sorted.bam" "$outdir/${sample}.fixmate_sorted.bam"
 
     local n_mapped n_dup n_q30 n_q20
-    n_mapped=$(samtools view -@ "$JOB_CPUS" -c -F 4 "$outdir/${sample}.besthit_oryza.irgsp.bam")
-    n_dup=$(samtools view -@ "$JOB_CPUS" -c -f 1024 "$outdir/${sample}.besthit_oryza.irgsp.bam")
-    n_q30=$(samtools view -@ "$JOB_CPUS" -c -F 1028 -q 30 "$outdir/${sample}.besthit_oryza.irgsp.bam")
-    n_q20=$(samtools view -@ "$JOB_CPUS" -c -F 1028 -q 20 "$outdir/${sample}.besthit_oryza.irgsp.bam")
+    n_mapped=$(samtools view -@ "$JOB_CPUS" -c -F 4 "$final_bam")
+    n_dup=$(samtools view -@ "$JOB_CPUS" -c -f 1024 "$final_bam")
+    n_q30=$(samtools view -@ "$JOB_CPUS" -c -F 1028 -q 30 "$final_bam")
+    n_q20=$(samtools view -@ "$JOB_CPUS" -c -F 1028 -q 20 "$final_bam")
     echo "[done] $sample: mapped=$n_mapped duplicates_flagged=$n_dup mapq>=30_nondup=$n_q30 mapq>=20_nondup=$n_q20 (duplicates not removed -- pseudo_haploid_call.py filters them at pileup time)"
 
     touch "$outdir/${sample}.finished"
@@ -356,7 +388,7 @@ case "${1:-}" in
         if [[ "${1:-}" == "all" ]]; then
             discover_samples
             [[ "${#SAMPLES[@]}" -gt 0 ]] || {
-                echo "ERROR: no *.besthit_oryza.fastq.gz under $BESTHIT_DIR" >&2
+                echo "ERROR: no *${INPUT_SUFFIX} under $BESTHIT_DIR" >&2
                 exit 1
             }
             echo "[submit] all: ${#SAMPLES[@]} samples with a besthit FASTQ"
@@ -370,7 +402,7 @@ case "${1:-}" in
         if [[ "${1:-}" == "all" ]]; then
             discover_samples
             [[ "${#SAMPLES[@]}" -gt 0 ]] || {
-                echo "ERROR: no *.besthit_oryza.fastq.gz under $BESTHIT_DIR" >&2
+                echo "ERROR: no *${INPUT_SUFFIX} under $BESTHIT_DIR" >&2
                 exit 1
             }
             echo "[local] all: ${#SAMPLES[@]} samples with a besthit FASTQ"
