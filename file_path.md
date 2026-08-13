@@ -243,3 +243,73 @@ git show <commit_hash>:PROJECT_STATUS.md > /tmp/old_version.md
 | 怎么在IGV里看数据 | `docs/IGV_visualization_guide.md` |
 | 某个脚本具体是干什么的 | `scripts/server_originals/`(真实脚本) 或
   `tests/param_matrix_bt2_vs_bwa/scripts/`(参数测试脚本) |
+
+---
+
+## 九、`codex/ecotype-pca-panel`分支路径(2026-08-14新增)
+
+**跟上面八节描述的主流程(BWA提取/57基因命中)是平行的独立分析线**，
+详见该分支`docs/ECOTYPE_PCA_PANEL.md`的📍handoff段落。这里只补充本文档
+之前完全没覆盖的路径。
+
+**⚠️没有软链接**：本节下面全部路径都是真实目录/文件，直接建在
+`/home/scratch/yinmt202607/`下——**不经过`/itp`软链接层**(不同于本项目
+其他部分"新产出放itp、软链接回scratch"的惯例，见长期记忆
+`itp-storage-symlink-convention`)。这一点是根据本次会话里用户实际粘贴
+的终端输出推断的，没有专门跑`ls -la`逐个核实每一条，如果发现某条其实
+是软链接，以服务器真实情况为准，回来更新这一节。
+
+```
+/home/scratch/yinmt202607/
+├── db/
+│   ├── 29M_3k/                       # PCA-A：3K RGP栽培稻，3024份×~29.6M biallelic SNP
+│   │   ├── NB_final_snp.{ind,snp,eigenstratgeno}       # 原始(convertf转换产出)
+│   │   ├── NB_final_snp.labeled.ind                    # 群体标签(IND/AUS/ARO/TRJ/TEJ/...)
+│   │   ├── NB_final_snp.label_report.tsv
+│   │   ├── NB_final_snp.filtered.{ind,eigenstratgeno}  # UNK剔除后，下游一律用这份
+│   │   └── references/rice_line_metadata_20141029.xlsx # 3K RGP官方元数据(来自main分支docs/references/)
+│   ├── 6.7M_720/                     # PCA-B：野生稻为主，720份×~6.7M SNP
+│   │   ├── asn720.6m.{ind,snp,geno,geno.gz}            # 原始(作者私发的加密版，来源/处理流程不透明)
+│   │   ├── asn720.6m.labeled.ind / label_report.tsv    # 群体标签(来自asn720data的OrA-OrF)
+│   │   └── asn720.6m.filtered.{ind,geno}               # UNK剔除后
+│   ├── paper1/                       # PCA-C：Civáň 2019桥接面板，1056份×2,365,188 SNP
+│   │   ├── civan_snp.{ind,snp,eigenstratgeno}          # 原始(VCF→convertf转换产出)
+│   │   ├── Table_S1.csv / Table_S2.csv                 # 论文原始元数据(样本×祖源/SRA来源)
+│   │   ├── civan_snp.labeled.ind / label_report.tsv
+│   │   └── civan_snp.filtered.{ind,eigenstratgeno}     # UNK剔除后
+│   └── wild_rice_pangenome_README.txt                  # 内容为空，未解决"OrA-OrF"定义来源问题
+├── gene/
+│   ├── scripts/                      # `scripts/ecotype_pca/`的部署位置(curl下载到这里执行)
+│   └── results/ecotype_pca/
+│       ├── panel_overlap/            # summarize_panel_overlap.py产出(位点重叠+QC统计)
+│       ├── bam_irgsp/                # besthit_oryza→IRGSP全属比对BAM，mapping_summary.tsv
+│       ├── loo_smoke/                # Civáň leave-one-out smoke test完整产出(唯一真正跑过的PCA)
+│       └── pca_runs/                 # 16样本×3panel批量铺开的目标目录(已建，还没有产出)
+```
+
+**Git仓库(`codex/ecotype-pca-panel`分支)新增内容**：
+```
+scripts/ecotype_pca/
+├── summarize_panel_overlap.py                  # 位点重叠+QC统计(pysam pileup)
+├── build_{29m3k,720,civan}_population_labels.py # 三个panel的群体标签匹配
+├── filter_panel_by_label.py                    # 按标签物理剔除样本(UNK剔除用这个)
+├── build_sample_panel_subset.py                # 样本专属子集(⚠️设计缺陷，见QC_DESIGN第1节)
+├── simulate_leaveoneout_projection.py           # leave-one-out正对照模拟
+├── merge_ancient_into_panel.py                  # 古样本合并进panel
+├── run_sample_panel_pca.sh                      # ①-④四步流水线封装+批量入口
+├── summarize_projection_distances.py            # .evec最近现代群体排名
+├── civan_domesticated_reference_labels.txt      # Civáň panel axis-building标签清单(poplist bug修复配套)
+├── pseudo_haploid_call.py / map_besthit_to_irgsp.sh  # 更早期已有脚本
+└── par.MERGE / run_convert_merge.sh             # ⚠️已废弃，仅存档mergeit调试历史，不要用
+
+docs/
+├── ECOTYPE_PCA_PANEL.md              # 本分支的"为什么"+📍handoff入口
+├── ECOTYPE_PCA_EXECUTION_PLAN.md     # 10步执行计划+完成状态
+├── ECOTYPE_PCA_PHASE0_COMMANDS.md    # Phase 0(位点重叠census)服务器命令
+├── ECOTYPE_PCA_PHASE1_COMMANDS.md    # Phase 1(标签匹配→子集PCA→LOO)服务器命令
+├── ECOTYPE_PCA_PANEL_QC_DESIGN.md    # MAF/LD pruning设计+GPT review记录+待办顺序
+└── references/3k_rice_genomes_project/  # 3K RGP官方文档(从main分支同步)
+```
+
+对应的完整"为什么/怎么用"说明见`docs/ECOTYPE_PCA_PANEL.md`📍段落，不在
+本文档重复。
