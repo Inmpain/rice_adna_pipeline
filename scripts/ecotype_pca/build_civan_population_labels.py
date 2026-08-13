@@ -24,6 +24,17 @@ first and falls back to the sample ID unchanged (not doubled) when it
 doesn't match, rather than hard-failing -- both forms are confirmed-real
 cases here, not a guess.
 
+LABEL SELECTION FOR WILD SAMPLES: Table_S1.csv's Group column is "-" for
+every wild accession (confirmed on the real file) -- using that verbatim
+would merge all wild samples under one meaningless "-" label regardless
+of species, which is wrong, not just uninformative: of the 460 wild
+samples resolved via the Table_S2 bridge below, 456 are O. rufipogon but
+a handful are entirely different species (O. meridionalis, O.
+glaberrima, O. barthii, O. longistaminata -- confirmed on the real
+file). When Group is empty or "-", the label falls back to Species
+instead, so these don't get silently pooled with O. rufipogon into the
+same population for axis-building.
+
 WILD-SAMPLE ID BRIDGE: the 461 wild samples are "plain"-form ERR-style
 run accessions in civan_snp.ind, but Table_S1.csv identifies wild
 accessions by the paper's own "W####" names (confirmed on the real
@@ -243,7 +254,20 @@ def main(argv: list[str] | None = None) -> int:
                 species, group = "", ""
             else:
                 species, group = meta
-                final_label = group if group else args.unmapped_label
+                if group and group != "-":
+                    final_label = group
+                elif species:
+                    # Table_S1.csv leaves Group as "-" for every wild
+                    # accession (confirmed on the real file), which is not
+                    # one label -- 456 of these rows are O. rufipogon but a
+                    # handful are entirely different wild species
+                    # (O. meridionalis / O. glaberrima / O. barthii /
+                    # O. longistaminata, confirmed on the real file). Fall
+                    # back to Species so these don't get silently merged
+                    # into the same population label as O. rufipogon.
+                    final_label = species
+                else:
+                    final_label = args.unmapped_label
                 n_matched += 1
                 species_group_counts[(species, group)] += 1
             label_counts[final_label] += 1
