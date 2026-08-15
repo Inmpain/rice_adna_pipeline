@@ -38,12 +38,19 @@ pruning）**实际上都还没有在服务器上真正跑过**，之前给的都
    配套`scripts/ecotype_pca/civan_domesticated_reference_labels.txt`
    列出6个栽培稻标签。**验证结果**：用修复后的脚本重跑
    LV7008416379×Civáň（输出在
-   `gene/results/ecotype_pca/civan_refonly_check/`），PC1/PC2从
-   (0.0283, -0.0074)变为(0.0393, -0.0103)——坐标确实因去掉野生稻建轴
-   而漂移，但**排序不变**：仍然aromatic最近(距离0.0086，原0.0083)，
-   其次japonica系列，indica/aus/野生稻远得多。"aromatic最近"这个结论
-   在axis只含栽培稻之后依然成立，不是野生稻混入建轴造成的假象。详见
-   `docs/ECOTYPE_PCA_PANEL_QC_DESIGN.md`第0节。**仍然只是1个样本、
+   `gene/results/ecotype_pca/civan_refonly_check/`）。**注意坐标不能
+   跨版本直接比较数值**——旧结果的axes由栽培+野生共同定义，新结果的
+   axes只由595份栽培稻定义，两次是不同的PCA坐标系(各自独立的旋转/
+   尺度)，PC1/PC2从(0.0283,-0.0074)变到(0.0393,-0.0103)、distance从
+   0.0083变到0.0086，这些数值层面的接近是巧合，不代表"结果几乎没变"。
+   真正可比、也确实成立的是**排序**：两次都是aromatic第一，其次
+   japonica系列，indica/aus/野生稻明显更远。结论：野生稻混入建轴**
+   不是**"aromatic最近"这个结果的成因(已排除)，但这还不等于验证了
+   "这个样本就是aromatic"——147个位点本身有没有区分aromatic/japonica
+   的能力还没测过，见`docs/ECOTYPE_PCA_PANEL_QC_DESIGN.md`第0节新增的
+   confusion-matrix待办(用`simulate_leaveoneout_projection.py
+   --mask-from`批量遮蔽已知标签样本、比较真实标签vs投影最近标签，
+   现有脚本循环用法即可，不需要新脚本)。**仍然只是1个样本、
    147个位点、单次伪单倍型抽样的冒烟结果**，bootstrap不确定性量化
    (执行计划第6节)还没做，也不代表可以现在就把16样本×3panel的48
    组合批量跑开——见QC设计文档第6节第4项，reference-first架构重构
