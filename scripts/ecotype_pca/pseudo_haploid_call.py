@@ -383,12 +383,32 @@ def main():
 
     n_uncovered = n_no_coverage + n_allele_mismatch
     callable_sites = n_total - n_transition_skipped - n_no_allele_info - n_unsupported_chromosome
-    call_rate = (n_called / callable_sites) if callable_sites else 0.0
+    # Two different denominators answer two different questions -- conflating
+    # them into one "call_rate" (2026-08-15 correction, GPT review of a4fb1e6)
+    # made the number look artificially tiny and unusable, because it's
+    # dominated by no_coverage (a coverage-depth fact, not a calling-quality
+    # fact):
+    #   eligible_site_call_rate: of every site this run was even ALLOWED to
+    #     attempt (excludes transition-skipped/no-allele-info/unsupported-
+    #     chromosome, which are excluded by design, not by data), what
+    #     fraction actually got called -- this is coverage-dominated, most
+    #     of the denominator is typically no_coverage for a sparse ancient
+    #     sample, and that's expected, not a quality signal.
+    #   allele_match_rate_among_covered: of sites where a read WAS actually
+    #     drawn (called + allele_mismatch), what fraction matched a known
+    #     panel allele -- this is the actual data-quality signal (sequencing
+    #     error / third allele / residual damage the TV filter didn't catch
+    #     would show up here, not in the coverage-dominated number above).
+    eligible_site_call_rate = (n_called / callable_sites) if callable_sites else 0.0
+    n_drawn = n_called + n_allele_mismatch
+    allele_match_rate_among_covered = (n_called / n_drawn) if n_drawn else 0.0
     sys.stderr.write(
         f"[pseudo_haploid_call] total={n_total} transition_skipped={n_transition_skipped} "
         f"no_allele_info={n_no_allele_info} unsupported_chromosome={n_unsupported_chromosome} "
         f"no_coverage={n_no_coverage} allele_mismatch={n_allele_mismatch} called={n_called} "
-        f"missing={n_total - n_called} callable_sites={callable_sites} call_rate={call_rate:.4f}\n"
+        f"missing={n_total - n_called} callable_sites={callable_sites} "
+        f"eligible_site_call_rate={eligible_site_call_rate:.6f} "
+        f"allele_match_rate_among_covered={allele_match_rate_among_covered:.4f}\n"
     )
     assert n_called + n_no_coverage + n_allele_mismatch + n_transition_skipped \
         + n_no_allele_info + n_unsupported_chromosome == n_total, \
@@ -408,7 +428,8 @@ def main():
             r.write(f"called\t{n_called}\n")
             r.write(f"missing\t{n_total - n_called}\n")
             r.write(f"callable_sites\t{callable_sites}\n")
-            r.write(f"call_rate\t{call_rate:.6f}\n")
+            r.write(f"eligible_site_call_rate\t{eligible_site_call_rate:.6f}\n")
+            r.write(f"allele_match_rate_among_covered\t{allele_match_rate_among_covered:.6f}\n")
 
 
 if __name__ == "__main__":

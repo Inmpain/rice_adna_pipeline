@@ -189,7 +189,38 @@ def test_unsupported_chromosome_counted():
         report_text = open(report).read()
         check("unsupported_chromosome_field_present", "unsupported_chromosome\t1" in report_text,
               report_text)
-        check("call_rate_field_present", "call_rate\t" in report_text, report_text)
+        check("eligible_site_call_rate_field_present",
+              "eligible_site_call_rate\t" in report_text, report_text)
+        check("allele_match_rate_among_covered_field_present",
+              "allele_match_rate_among_covered\t" in report_text, report_text)
+
+
+def test_two_call_rate_metrics_diverge_as_expected():
+    """2026-08-15 correction (GPT review of a4fb1e6): a single 'call_rate'
+    conflated two different questions. Construct a scenario with mostly
+    no_coverage sites (drags eligible_site_call_rate down) but where every
+    site that DID get a read drawn matched a known allele (so
+    allele_match_rate_among_covered should be 1.0 regardless) -- the two
+    metrics must diverge, proving they're not the same number under a
+    different name."""
+    with tempfile.TemporaryDirectory() as d:
+        bam = build_synthetic_bam(d, ["A"], ["A"])  # only pos 10 and pos 20 covered
+        snp_rows = [("covered1", 1, 0, 10, "A", "C"), ("covered2", 1, 0, 20, "A", "C")]
+        # add 8 more transversion SNPs with no coverage at all
+        for i, pos in enumerate(range(100, 900, 100), start=1):
+            snp_rows.append((f"uncovered{i}", 1, 0, pos, "A", "C"))
+        snp = write_snp(d, snp_rows)
+        out = os.path.join(d, "out.txt")
+        report = os.path.join(d, "report.tsv")
+        p = run_script(FIXED, ["--bam", bam, "--panel-snp", snp, "--out", out, "--report", report])
+        check("diverge_scenario_run_ok", p.returncode == 0, p.stderr)
+        values = dict(line.split("\t") for line in open(report).read().splitlines()[1:])
+        eligible = float(values["eligible_site_call_rate"])
+        match_rate = float(values["allele_match_rate_among_covered"])
+        check("eligible_rate_diluted_by_no_coverage", eligible < 0.3, eligible)  # 2/10
+        check("match_rate_not_diluted_by_no_coverage", match_rate == 1.0, match_rate)
+        check("the_two_metrics_actually_differ", abs(eligible - match_rate) > 0.5,
+              (eligible, match_rate))
 
 
 if __name__ == "__main__":
@@ -201,5 +232,6 @@ if __name__ == "__main__":
     test_missing_bai_hard_fails()
     test_malformed_snp_line_hard_fails_not_crashes()
     test_unsupported_chromosome_counted()
+    test_two_call_rate_metrics_diverge_as_expected()
     print(f"\nTOTAL: {PASS} passed, {FAIL} failed")
     sys.exit(1 if FAIL else 0)
