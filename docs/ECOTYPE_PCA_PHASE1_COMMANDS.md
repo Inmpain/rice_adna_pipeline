@@ -298,6 +298,28 @@ step -- that was a one-time pipeline validation, not part of the batch)
 into one command per sample-panel pair, skipping any combination whose
 `.evec` already exists.
 
+**2026-08-15 update**: the civan block below now passes
+`REFERENCE_LABELS_FILE` (9th arg,
+`civan_domesticated_reference_labels.txt`) so all 16 civan combinations
+get the wild-rice-excluded-from-axis fix (commit `cd5de6a`) from the
+start, instead of needing a second corrective pass later. This fix was
+verified on LV7008416379 alone before being applied here at scale (see
+`docs/ECOTYPE_PCA_PANEL_QC_DESIGN.md` section 0) -- the qualitative
+nearest-population ranking held, only the raw PC coordinates/distances
+shifted (not directly comparable across the two axis-builder versions,
+see that section for why). The 29m3k and 720 blocks are unchanged (no
+`REFERENCE_LABELS_FILE`): 29m3k is 100% cultivated already so this
+doesn't apply, and 720's correct reference set is still an open,
+separate design question (section 3 of the QC design doc).
+
+**Standing caveat, still true when this batch is run**: none of the
+three panels have had MAF/LD pruning applied, and each ancient sample
+still gets its own independently-subset marker set (the
+"reference-first" redesign in `ECOTYPE_PCA_PANEL_QC_DESIGN.md` section
+1 has not landed) -- per that doc's section 6 item 4, this batch's
+results may need to be re-run once that redesign lands. Run this batch
+as a first look, not a final one.
+
 ```bash
 cd /home/scratch/yinmt202607/gene/scripts
 mkdir -p /home/scratch/yinmt202607/gene/results/ecotype_pca/pca_runs
@@ -315,7 +337,8 @@ for sample in $SAMPLES; do
       /home/scratch/yinmt202607/db/paper1/civan_snp.snp \
       /home/scratch/yinmt202607/db/paper1/civan_snp.filtered.eigenstratgeno \
       /home/scratch/yinmt202607/db/paper1/civan_snp.filtered.ind \
-      ${OUT_DIR} TV"
+      ${OUT_DIR} TV \
+      /home/scratch/yinmt202607/gene/scripts/civan_domesticated_reference_labels.txt"
 
   sbatch -p comp --exclude=node05,node06 -c 2 --mem 4G -t 02:00:00 \
     -J pca_29m3k -o "${OUT_DIR}/${sample}.29m3k.log" \
@@ -353,4 +376,16 @@ for f in *.nearest.tsv; do [[ "$f" == all_samples* ]] && continue; tail -n +2 "$
 column -t -s $'\t' all_samples.nearest.tsv | less -S
 ```
 
-Status as of this doc's last update: batch submitted, not yet complete.
+Status as of this doc's last update (2026-08-15): not yet submitted.
+Before submitting, `docs/ECOTYPE_PCA_PANEL_QC_DESIGN.md` section 0's
+masked-LOO classification-power validation (32 individuals, aromatic/
+aus/indica/japonica, on LV7008416379's own 147-site Civáň mask) is worth
+reading first -- aromatic/aus/indica each classified with 100% recall
+and aromatic had 88.9% precision (8/9 predicted-aromatic calls were
+truly aromatic, 1 was a mislabeled japonica), but the plain "japonica" label
+itself only had 37.5% recall (mostly confused with
+japonica_(tropical), not with aromatic) -- so this marker set
+discriminates aromatic well but has weak resolution within the
+japonica-family subdivisions. Doesn't block running this batch, just
+context for how much weight to put on any single sample's civan
+"closest to X" result once this batch completes.
