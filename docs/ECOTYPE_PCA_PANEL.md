@@ -30,16 +30,24 @@ pruning）**实际上都还没有在服务器上真正跑过**，之前给的都
    的poplistname里混进了456个O._rufipogon野生稻样本**——见下一条，
    这个结果的"aromatic最近"结论建立在一个已知bug之上，还没有用修复
    后的版本重新验证过。
-3. **已修复但还没重新验证的bug**（commit `cd5de6a`）：
+3. **已修复且已重新验证的bug**（commit `cd5de6a`修复，2026-08-15验证）：
    `run_sample_panel_pca.sh`原来把merged.ind里除Ancient外的所有标签
    都塞进poplistname，导致Civáň panel的野生稻样本参与了axis-building
    ——这跟Civáň论文自己的方法相反(论文只用595份栽培稻定义axes，野生
    稻只做projection)。修复：新增可选第9个参数`REFERENCE_LABELS_FILE`，
    配套`scripts/ecotype_pca/civan_domesticated_reference_labels.txt`
-   列出6个栽培稻标签。**下一步要做的第一件事**：用修复后的脚本重跑
-   LV7008416379×Civáň（命令在`docs/ECOTYPE_PCA_PANEL_QC_DESIGN.md`
-   第0节引用的对话记录里，也可以直接照抄下面这段重新生成），看
-   "aromatic最近"这个结论在axis只含栽培稻之后是否还成立。
+   列出6个栽培稻标签。**验证结果**：用修复后的脚本重跑
+   LV7008416379×Civáň（输出在
+   `gene/results/ecotype_pca/civan_refonly_check/`），PC1/PC2从
+   (0.0283, -0.0074)变为(0.0393, -0.0103)——坐标确实因去掉野生稻建轴
+   而漂移，但**排序不变**：仍然aromatic最近(距离0.0086，原0.0083)，
+   其次japonica系列，indica/aus/野生稻远得多。"aromatic最近"这个结论
+   在axis只含栽培稻之后依然成立，不是野生稻混入建轴造成的假象。详见
+   `docs/ECOTYPE_PCA_PANEL_QC_DESIGN.md`第0节。**仍然只是1个样本、
+   147个位点、单次伪单倍型抽样的冒烟结果**，bootstrap不确定性量化
+   (执行计划第6节)还没做，也不代表可以现在就把16样本×3panel的48
+   组合批量跑开——见QC设计文档第6节第4项，reference-first架构重构
+   还没落地，48组合批量目前跑了以后大概率要扔掉重跑。
 4. **2026-08-13当天问了GPT关于三个panel MAF/LD pruning的问题**，得到
    一整套架构性反馈（reference-first、冻结marker set、单次smartpca
    覆盖所有古样本而不是每个样本单独跑一次子集），**全部记录在新文档
