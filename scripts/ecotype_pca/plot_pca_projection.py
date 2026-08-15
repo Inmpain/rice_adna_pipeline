@@ -62,8 +62,8 @@ def load_evec(path: Path) -> list[tuple[str, float, float, str]]:
     rows = []
     with path.open() as handle:
         first = handle.readline()
-        if not first.startswith("#"):
-            raise ValueError(f"{path}: expected first line to start with '#', got {first[:40]!r}")
+        if not first.strip().startswith("#"):
+            raise ValueError(f"{path}: expected first line to start with '#' (smartpca's eigvals header, possibly indented), got {first[:40]!r}")
         for line_no, line in enumerate(handle, start=2):
             fields = line.split()
             if len(fields) < 4:
