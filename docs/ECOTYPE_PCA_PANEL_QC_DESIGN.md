@@ -58,18 +58,48 @@ japonica_(temperate)
 **Done, 2026-08-15**: re-ran LV7008416379's Civáň projection with
 `REFERENCE_LABELS_FILE` set to this file
 (`run_sample_panel_pca.sh ... TV /home/scratch/yinmt202607/gene/scripts/civan_domesticated_reference_labels.txt`,
-output in `gene/results/ecotype_pca/civan_refonly_check/`). **"Closest
-to aromatic" survives**: PC1/PC2 moved from (0.0283, -0.0074) to
-(0.0393, -0.0103) once wild rice was excluded from axis-building, but
-the ranking is unchanged -- aromatic nearest (dist 0.0086, was 0.0083),
-then japonica/japonica_(tropical)/japonica_(temperate) in the same
-order, then O._rufipogon/indica/aus far behind. The coordinate shift
-confirms wild rice *was* pulling the axes, but not enough to change
-which population this sample lands nearest to. Still one sample, 147
-TV sites, single pseudo-haploid draw -- bootstrap uncertainty
-(execution plan section 6) still not run, and this does not itself
-justify scaling out to the other 15 samples (see section 6 item 4 below
--- reference-first redesign still blocks that).
+output in `gene/results/ecotype_pca/civan_refonly_check/`). **The
+question this test can answer is narrow: "was wild rice's presence in
+axis-building the sole cause of the earlier aromatic-nearest result?"
+-- answer: no.** Raw PC1/PC2 moved from (0.0283, -0.0074) to (0.0393,
+-0.0103) and the raw distance from 0.0083 to 0.0086, but **these two
+numbers are not on the same scale and must not be compared as
+magnitudes** -- the old run's axes were defined by cultivated+wild
+individuals, the new run's axes by the 595 cultivated individuals only,
+so the two `.evec` files are different PCA coordinate systems (their
+own independent rotation/scaling); a value moving from 0.0083 to 0.0086
+does not mean "almost no change" in any meaningful sense, it's a
+coincidence of similar magnitude in two different spaces. **What *is*
+comparable, and did hold**: the qualitative nearest-population ranking
+-- aromatic #1 in both runs, followed by
+japonica/japonica_(tropical)/japonica_(temperate) in the same order,
+then O._rufipogon/indica/aus clearly farther, in both runs. So: wild
+rice in axis-building is ruled out as the explanation for the
+aromatic-nearest result, but this is not yet a validated population
+assignment -- see the new open item below on classification power.
+Still one sample, 147 TV sites, single pseudo-haploid draw -- bootstrap
+uncertainty (execution plan section 6) still not run, and none of this
+justifies scaling out to the other 15 samples (see section 6 item 4
+below -- reference-first redesign still blocks that).
+
+**New open item, 2026-08-15: the 147-SNP marker set's classification
+power is untested.** Everything above only shows LV7008416379 sits
+closer to aromatic/japonica than to indica/aus/wild *on these specific
+147 sites* -- it does not show these 147 sites can actually tell
+aromatic and japonica apart. Test design (no new script needed): take
+several known-label individuals from each of aromatic/japonica/indica/
+aus, run each through `simulate_leaveoneout_projection.py --mask-from
+<LV7008416379's pseudohap file>` (same tool already used for the
+single-held-out-indica LOO validation in section 6 of
+`ECOTYPE_PCA_PHASE1_COMMANDS.md`, just looped over more individuals and
+labels instead of one), project each masked individual the same way,
+and build a confusion matrix (true label vs. nearest-projected label).
+If true-aromatic individuals reliably project nearest to aromatic and
+true-japonica individuals reliably project nearest to japonica on this
+147-site mask, the aromatic call for LV7008416379 gains real evidentiary
+weight; if the two labels are frequently confused for each other under
+this mask, the correct claim is only "aromatic/japonica-side affinity",
+not "aromatic". Not started.
 
 ## 1. Core architectural principle GPT's review established (not yet implemented)
 
