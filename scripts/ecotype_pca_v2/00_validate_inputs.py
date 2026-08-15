@@ -5,11 +5,22 @@ Read-only. Verifies every input, tool, and label assumption the rest of
 ecotype_pca_v2 depends on, before any panel manifest or audit is built.
 Never modifies data. Never touches results/ecotype_pca/ (v1).
 
+Prints two explicit gates, always both, regardless of flags:
+  SHOTGUN_READY: PASS/FAIL      -- shotgun-track prerequisites only
+  BATCH_1_FULL:  PASS/BLOCKED/FAIL  -- shotgun AND capture together
+
+BATCH_1_FULL is never PASS while capture_bait_bed is unresolved -- BLOCKED
+is a distinct outcome from PASS specifically so nothing downstream can
+mistake "shotgun is fine" for "the whole batch gate passed" (that was a
+real bug in the first cut of this script: exit 0 in default mode could be
+read as batch success while capture was silently still blocked).
+
 Exit codes:
-  0  all SHOTGUN-track checks passed (capture-track status reported but
-     does not block shotgun-track work unless --require-capture is given)
-  2  an unexpected FAIL (missing file, tool, or format problem)
-  3  a BLOCKED item required by --track is unresolved (e.g. capture bait BED)
+  0  BATCH_1_FULL == PASS
+  3  BATCH_1_FULL == BLOCKED (shotgun fine, capture still blocked) --
+     pass --allow-capture-blocked to accept this as success (exit 0) for
+     callers that only care about shotgun-track readiness
+  2  BATCH_1_FULL == FAIL (a real, non-capture problem)
 """
 import sys
 from pathlib import Path
@@ -163,8 +174,9 @@ def check_tools(logger):
 
 def main():
     ap = base_argparser(__doc__)
-    ap.add_argument("--track", choices=["shotgun", "capture", "both"], default="shotgun",
-                     help="which track's readiness determines the exit code")
+    ap.add_argument("--allow-capture-blocked", action="store_true",
+                     help="exit 0 when BATCH_1_FULL is BLOCKED-only-by-capture instead of 3; "
+                          "does not change what gets printed, only the exit code")
     args = ap.parse_args()
     logger, log_path = setup_logger("00_validate_inputs", args.out_dir)
     cfg = load_config(args.config)
@@ -223,16 +235,21 @@ def main():
     shotgun_ok = all(results.get(k, False) for k in shotgun_required)
     capture_ok = results.get("capture_bait_bed", False)
 
-    logger.info(f"SHOTGUN-track readiness: {'PASS' if shotgun_ok else 'FAIL'}")
-    logger.info(f"CAPTURE-track readiness: {'PASS' if capture_ok else 'BLOCKED'}")
-
-    if args.track == "capture" and not capture_ok:
-        sys.exit(3)
-    if args.track == "both" and not (shotgun_ok and capture_ok):
-        sys.exit(3 if shotgun_ok else 2)
     if not shotgun_ok:
-        sys.exit(2)
-    sys.exit(0)
+        batch_status = "FAIL"
+    elif not capture_ok:
+        batch_status = "BLOCKED"
+    else:
+        batch_status = "PASS"
+
+    logger.info(f"SHOTGUN_READY: {'PASS' if shotgun_ok else 'FAIL'}")
+    logger.info(f"BATCH_1_FULL: {batch_status}")
+
+    if batch_status == "PASS":
+        sys.exit(0)
+    if batch_status == "BLOCKED":
+        sys.exit(0 if args.allow_capture_blocked else 3)
+    sys.exit(2)
 
 
 if __name__ == "__main__":

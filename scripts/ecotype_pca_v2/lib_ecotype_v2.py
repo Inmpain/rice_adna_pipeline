@@ -86,6 +86,39 @@ def run_cmd(cmd, logger, check=True):
     return proc
 
 
+def run_cmd_stream_to_file(cmd, out_path, logger, check=True):
+    """Like run_cmd, but stdout is streamed directly to out_path instead of being
+    captured into memory and dumped whole into the log. Only stderr (expected to
+    be small -- progress/warnings, not the actual data payload) is logged. Use
+    this for any command whose stdout IS the output data (bedtools intersect,
+    bedtools sort, etc) rather than a status message -- capturing multi-GB
+    stdout into a Python string and then into a log file is both a memory risk
+    and produces an unusable log."""
+    logger.info(f"RUN (stdout -> {out_path}): " + " ".join(str(c) for c in cmd))
+    with open(out_path, "w") as out_fh:
+        proc = subprocess.run(cmd, stdout=out_fh, stderr=subprocess.PIPE, text=True)
+    if proc.stderr.strip():
+        logger.info("STDERR:\n" + proc.stderr.strip())
+    if check and proc.returncode != 0:
+        logger.error(f"command exited {proc.returncode}: {' '.join(str(c) for c in cmd)}")
+        sys.exit(proc.returncode)
+    return proc
+
+
+def run_cmd_discard_stdout(cmd, logger, check=True):
+    """For validation-only commands whose stdout is neither the result we want
+    nor something worth logging (e.g. `bedtools sort -i X` used only to confirm
+    X parses) -- stdout goes to /dev/null, only stderr/returncode matter."""
+    logger.info("RUN (stdout discarded, validation only): " + " ".join(str(c) for c in cmd))
+    proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    if proc.stderr.strip():
+        logger.info("STDERR:\n" + proc.stderr.strip())
+    if check and proc.returncode != 0:
+        logger.error(f"command exited {proc.returncode}: {' '.join(str(c) for c in cmd)}")
+        sys.exit(proc.returncode)
+    return proc
+
+
 def tool_version(cmd, logger):
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -143,6 +176,73 @@ def iter_eigenstrat_snp(path):
                 raise ValueError(f"{path}:{lineno}: unexpected .snp column count {len(parts)}: {line!r}")
             yield {"snpid": snpid, "chrom": chrom, "genpos": genpos, "pos": int(pos),
                    "ref": ref, "alt": alt}
+
+
+def find_duplicate_ids(ids):
+    """Return {id: count} for every id appearing more than once, preserving
+    nothing about order -- used to hard-fail on duplicate sample/SNP IDs
+    rather than silently keeping the first or last occurrence."""
+    from collections import Counter
+    counts = Counter(ids)
+    return {k: v for k, v in counts.items() if v > 1}
+
+
+def genomic_window_index(pos_1based, window_bp):
+    """1-based genomic coordinate -> 0-based non-overlapping window index of
+    size window_bp. Position 1..window_bp -> window 0, window_bp+1..2*window_bp
+    -> window 1, etc. Using (pos-1)//window_bp (NOT pos//window_bp) is required
+    for 1-based coordinates: pos==window_bp must fall in window 0, not window 1."""
+    return (pos_1based - 1) // window_bp
+
+
+def validate_panel_a_bim(bim_path):
+    """Panel A primary-parameter structural checks (spec section 5): biallelic
+    only, chromosomes 1-12 only, unique SNP ID, unique (chrom,pos) position.
+    Returns a list of human-readable problem strings; empty list means clean.
+    Does not modify anything -- callers must sys.exit on a nonempty result,
+    not attempt to auto-fix."""
+    problems = []
+    valid_chroms = {str(c) for c in range(1, 13)}
+    ids = []
+    seen_pos = {}
+    bad_chrom = set()
+    non_biallelic = []
+    dup_pos_examples = []
+    with open(bim_path) as fh:
+        for lineno, line in enumerate(fh, 1):
+            parts = line.split()
+            if len(parts) < 6:
+                problems.append(f"{bim_path}:{lineno}: expected >=6 columns, got {len(parts)}")
+                continue
+            chrom, snpid, _cm, pos, a1, a2 = parts[:6]
+            ids.append(snpid)
+            if chrom not in valid_chroms:
+                bad_chrom.add(chrom)
+            a1u, a2u = a1.upper(), a2.upper()
+            if (len(a1u) != 1 or len(a2u) != 1 or a1u == a2u
+                    or a1u not in "ACGT" or a2u not in "ACGT"):
+                non_biallelic.append((lineno, snpid, a1, a2))
+            key = (chrom, pos)
+            if key in seen_pos:
+                dup_pos_examples.append((key, seen_pos[key], snpid))
+            else:
+                seen_pos[key] = snpid
+
+    if bad_chrom:
+        problems.append(f"chromosomes outside 1-12 found: {sorted(bad_chrom)}")
+    if non_biallelic:
+        sample = non_biallelic[:10]
+        problems.append(f"{len(non_biallelic)} non-biallelic/non-ACGT allele rows, "
+                         f"e.g. {sample}")
+    dup_ids = find_duplicate_ids(ids)
+    if dup_ids:
+        sample = list(dup_ids.items())[:10]
+        problems.append(f"{len(dup_ids)} duplicate SNP IDs, e.g. {sample}")
+    if dup_pos_examples:
+        sample = dup_pos_examples[:10]
+        problems.append(f"{len(dup_pos_examples)} duplicate (chrom,pos) positions, "
+                         f"e.g. {sample}")
+    return problems
 
 
 def write_manifest_tsv(path, rows, fieldnames):

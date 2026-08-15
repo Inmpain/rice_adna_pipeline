@@ -21,7 +21,7 @@
 
 set -euo pipefail
 
-usage() {
+print_usage() {
   cat <<EOF
 Usage: $0 --dir PANEL_DIR --prefix PREFIX --out-dir OUT_DIR [--overwrite]
 
@@ -30,7 +30,6 @@ Usage: $0 --dir PANEL_DIR --prefix PREFIX --out-dir OUT_DIR [--overwrite]
   --out-dir   output directory for PREFIX.plink.{bed,bim,fam} and this script's log
   --overwrite allow replacing pre-existing output
 EOF
-  exit 1
 }
 
 DIR=""; PREFIX=""; OUT_DIR=""; OVERWRITE=0
@@ -40,11 +39,13 @@ while [[ $# -gt 0 ]]; do
     --prefix) PREFIX="$2"; shift 2 ;;
     --out-dir) OUT_DIR="$2"; shift 2 ;;
     --overwrite) OVERWRITE=1; shift ;;
-    -h|--help) usage ;;
-    *) echo "unknown argument: $1" >&2; usage ;;
+    -h|--help) print_usage; exit 0 ;;
+    *) echo "unknown argument: $1" >&2; print_usage; exit 1 ;;
   esac
 done
-[[ -z "$DIR" || -z "$PREFIX" || -z "$OUT_DIR" ]] && usage
+if [[ -z "$DIR" || -z "$PREFIX" || -z "$OUT_DIR" ]]; then
+  print_usage; exit 1
+fi
 
 mkdir -p "$OUT_DIR"
 LOG="$OUT_DIR/02_convert_eigenstrat_for_plink.${PREFIX}.log"
@@ -91,11 +92,13 @@ fi
 BED="$OUT_DIR/$PREFIX.plink.bed"
 BIM="$OUT_DIR/$PREFIX.plink.bim"
 FAM="$OUT_DIR/$PREFIX.plink.fam"
-if [[ -e "$BED" && $OVERWRITE -eq 0 ]]; then
-  echo "FATAL: $BED already exists, pass --overwrite to replace"; exit 3
-fi
-
 PAR="$OUT_DIR/par.${PREFIX}.EIGENSTRAT.PACKEDPED"
+for f in "$BED" "$BIM" "$FAM" "$PAR"; do
+  if [[ -e "$f" && $OVERWRITE -eq 0 ]]; then
+    echo "FATAL: $f already exists, pass --overwrite to replace"; exit 3
+  fi
+done
+
 cat > "$PAR" <<EOF
 genotypename: $GENO_INPUT
 snpname: $SNP

@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib_ecotype_v2 import (base_argparser, setup_logger, load_config,
                              read_eigenstrat_ind, iter_eigenstrat_snp,
                              read_eigenstrat_snp_header_probe, write_manifest_tsv,
-                             check_output_not_present)
+                             check_output_not_present, find_duplicate_ids)
 
 PANEL_KEYS = ["panel_A_3k", "panel_B_720", "panel_C_civan"]
 
@@ -34,11 +34,19 @@ def manifest_for_panel(cfg, panel_key, logger):
     if not raw_ind.is_file() or not raw_snp.is_file():
         logger.error(f"[{panel_key}] missing raw .ind/.snp, cannot build manifest -- "
                       f"run 00_validate_inputs.py first")
-        return None
+        return None, False
 
+    ok = True
     raw_rows = read_eigenstrat_ind(raw_ind)
     raw_n = len(raw_rows)
     raw_labels = Counter(r["label"] for r in raw_rows)
+
+    dup_sample_ids = find_duplicate_ids(r["id"] for r in raw_rows)
+    if dup_sample_ids:
+        sample = list(dup_sample_ids.items())[:10]
+        logger.error(f"[{panel_key}] ERROR: {len(dup_sample_ids)} duplicate sample IDs "
+                      f"in {raw_ind}, e.g. {sample}")
+        ok = False
 
     filtered_n = None
     filtered_labels = {}
@@ -53,19 +61,33 @@ def manifest_for_panel(cfg, panel_key, logger):
     ncol = col_counts[0] if col_counts else None
     has_ref_alt = ncol == 6
     if len(set(col_counts)) > 1:
-        logger.error(f"[{panel_key}] inconsistent .snp column count across first "
+        logger.error(f"[{panel_key}] ERROR: inconsistent .snp column count across first "
                       f"{len(col_counts)} lines: {col_counts} -- format problem, "
                       f"do not proceed with this panel until resolved")
+        ok = False
 
     chroms = Counter()
     n_snps = 0
     non_biallelic_alpha = 0
-    for rec in iter_eigenstrat_snp(raw_snp):
-        n_snps += 1
-        chroms[rec["chrom"]] += 1
-        if rec["ref"] is not None and rec["alt"] is not None:
-            if len(rec["ref"]) != 1 or len(rec["alt"]) != 1:
-                non_biallelic_alpha += 1
+    snp_ids = []
+    try:
+        for rec in iter_eigenstrat_snp(raw_snp):
+            n_snps += 1
+            chroms[rec["chrom"]] += 1
+            snp_ids.append(rec["snpid"])
+            if rec["ref"] is not None and rec["alt"] is not None:
+                if len(rec["ref"]) != 1 or len(rec["alt"]) != 1:
+                    non_biallelic_alpha += 1
+    except ValueError as e:
+        logger.error(f"[{panel_key}] ERROR: {raw_snp} failed to parse: {e}")
+        ok = False
+
+    dup_snp_ids = find_duplicate_ids(snp_ids)
+    if dup_snp_ids:
+        sample = list(dup_snp_ids.items())[:10]
+        logger.error(f"[{panel_key}] ERROR: {len(dup_snp_ids)} duplicate SNP IDs "
+                      f"in {raw_snp}, e.g. {sample}")
+        ok = False
 
     logger.info(f"[{panel_key}] raw N samples={raw_n}, raw N snps={n_snps}, "
                 f"has_ref_alt_columns={has_ref_alt}, chroms={sorted(chroms, key=str)}")
@@ -74,7 +96,7 @@ def manifest_for_panel(cfg, panel_key, logger):
         logger.info(f"[{panel_key}] filtered N samples={filtered_n}, "
                     f"filtered per-label counts: {dict(filtered_labels)}")
 
-    return {
+    row = {
         "panel": panel_key,
         "raw_n_samples": raw_n,
         "filtered_n_samples": filtered_n if filtered_n is not None else "NA",
@@ -87,6 +109,7 @@ def manifest_for_panel(cfg, panel_key, logger):
         "raw_label_counts": ";".join(f"{k}={v}" for k, v in sorted(raw_labels.items())),
         "filtered_label_counts": ";".join(f"{k}={v}" for k, v in sorted(filtered_labels.items())),
     }
+    return row, ok
 
 
 def main():
@@ -101,11 +124,11 @@ def main():
     rows = []
     fail = False
     for panel_key in PANEL_KEYS:
-        row = manifest_for_panel(cfg, panel_key, logger)
-        if row is None:
+        row, ok = manifest_for_panel(cfg, panel_key, logger)
+        if not ok:
             fail = True
-            continue
-        rows.append(row)
+        if row is not None:
+            rows.append(row)
 
     fieldnames = ["panel", "raw_n_samples", "filtered_n_samples", "n_snps", "n_chroms",
                   "chrom_list", "snp_columns", "has_ref_alt_columns",

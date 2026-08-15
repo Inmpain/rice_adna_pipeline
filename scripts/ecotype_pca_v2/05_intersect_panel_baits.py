@@ -20,7 +20,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib_ecotype_v2 import (base_argparser, setup_logger, load_config, run_cmd,
+from lib_ecotype_v2 import (base_argparser, setup_logger, load_config,
+                             run_cmd_stream_to_file, run_cmd_discard_stdout,
                              check_output_not_present, is_transversion)
 
 
@@ -69,11 +70,16 @@ def main():
         for chrom, pos, snpid, a1, a2 in bim_rows:
             fh.write(f"{chrom}\t{pos - 1}\t{pos}\t{snpid}\n")
 
-    run_cmd(["bedtools", "sort", "-i", str(snp_bed)], logger)  # validates BED is well-formed
+    # Validation-only: confirms snp_bed parses as well-formed BED. Its stdout IS
+    # the (large) re-sorted file, which we don't need -- discard rather than
+    # capture-then-log (capturing multi-million-line stdout into the log was
+    # both a memory risk and made the log file unusable).
+    run_cmd_discard_stdout(["bedtools", "sort", "-i", str(snp_bed)], logger)
+
+    # Same reasoning: intersect's stdout is the actual result data, streamed
+    # straight to hit_bed rather than captured into a Python string first.
     cmd = ["bedtools", "intersect", "-u", "-a", str(snp_bed), "-b", str(bait_path)]
-    proc = run_cmd(cmd, logger)
-    with open(hit_bed, "w") as fh:
-        fh.write(proc.stdout)
+    run_cmd_stream_to_file(cmd, hit_bed, logger)
 
     hit_ids = set()
     with open(hit_bed) as fh:
