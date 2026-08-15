@@ -99,7 +99,73 @@ true-japonica individuals reliably project nearest to japonica on this
 147-site mask, the aromatic call for LV7008416379 gains real evidentiary
 weight; if the two labels are frequently confused for each other under
 this mask, the correct claim is only "aromatic/japonica-side affinity",
-not "aromatic". Not started.
+not "aromatic".
+
+**Done, 2026-08-15** (`scripts/ecotype_pca/run_masked_loo_validation.sh` +
+`build_confusion_matrix.py`, 8 held-out individuals per label, seed 0,
+output in `gene/results/ecotype_pca/loo_validation_civan/`): aromatic,
+aus, and indica each classified with **100% recall** (8/8) on
+LV7008416379's 147-site mask; aromatic's **precision was 88.9%**
+(8/9 individuals predicted aromatic were truly aromatic, 1 was a
+mislabeled japonica). Combined aromatic<->japonica mutual confusion
+rate was low, 6.2% (1/16), and one-directional: 0/8 true-aromatic
+predicted japonica, 1/8 true-japonica predicted aromatic. Separately,
+the plain "japonica" label itself only had 37.5% recall (3/8), but 4 of
+the 5 errors were confused with `japonica_(tropical)` specifically, not
+with aromatic or indica/aus -- i.e. the 147-site mask struggles to
+resolve fine structure *within* the japonica lineage, which is a
+different (and less concerning, for the aromatic question) limitation
+than confusing unrelated groups. Net effect: this materially
+strengthens the evidentiary weight behind LV7008416379's original
+"closest to aromatic" result -- aromatic behaves as a cleanly separable
+category under this marker set, not a fragile one.
+
+## 0.1. Full-panel sanity check against the paper's own Fig. 2 (2026-08-15, not yet run)
+
+Prompted by an external review (relayed by the user, independently
+verified against the paper via WebFetch before being recorded here --
+not taken on faith): the reason our 147-locus matched-marker PCA plots
+look nothing like Civáň et al. 2019's clean Fig. 2 cluster structure is
+almost certainly **not** a bug -- it's because they are not the same
+analysis. Verified facts about the paper's own Fig. 2 (WebFetch against
+https://academic.oup.com/gbe/article/11/3/832/5355065, 2026-08-15):
+
+- Fig. 2's PCA used **2,365,188 biallelic sites** genome-wide (matches
+  our converted panel's SNP count exactly, already confirmed
+  2026-08-11), not a per-sample-shrunk marker subset. PC1+PC2 explain
+  **27.8%** of variance, PC3+PC4 an additional **5.3%**.
+- The 595 cultivated accessions that build the PCA axes (283 indica +
+  154 japonica [tropical and temperate pooled, not separately listed in
+  the final reference] + 124 aus + 34 aromatic) were themselves
+  **pre-selected as "typical" representatives**: an initial PCA on the
+  LD-pruned 404k CoreSNP set was run first, then for each of
+  indica/japonica/aus/aromatic the median of the top 10 PCs was found
+  and only accessions within 1 SD of that median (and not needing
+  reclassification) were kept. This is a deliberately tightened,
+  low-noise reference set, not "grab all 3K accessions labeled X" --
+  our own reference set is nominally the same 595 individuals, but this
+  explains part of why the paper's clusters look tight.
+- Wild rice is `-lsqproject`'d onto domesticated-only axes (matches our
+  fixed design, section 0 above) specifically because of a large
+  missingness gap: wild individuals **0.32-0.97** missing, domesticated
+  **0.07-0.54** missing.
+
+**Plan (not yet run)**: before drawing more conclusions from the
+147-locus ancient-sample PCAs, run smartpca on the **full, unshrunk**
+`civan_snp.filtered.eigenstratgeno`/`civan_snp.snp`/
+`civan_snp.filtered.ind` (i.e. skip `build_sample_panel_subset.py`
+entirely, no ancient sample involved at all) with the same
+`REFERENCE_LABELS_FILE`/poplistname restricting axis-building to the 6
+cultivated labels, wild `lsqproject`'d, and plot both PC1-PC2 and
+PC3-PC4. If this reproduces the paper's qualitative cluster structure
+(and ideally similar variance-explained numbers), it confirms our
+panel/conversion/genotype-orientation is sound and the ugly 147-locus
+plots are purely a low-marker-count artifact, not a data problem. If
+even this full-panel run doesn't reproduce the paper's structure, that
+points to a real problem upstream (genotype coding, REF/ALT
+orientation at scale, marker alignment) that needs fixing before any
+per-ancient-sample result can be trusted. Commands not yet handed to
+the user as of this doc's last edit -- see chat.
 
 ## 1. Core architectural principle GPT's review established (not yet implemented)
 
@@ -335,16 +401,38 @@ caveat as sections 3-4 above.)
 
 ## 6. Open TODOs, in the order they'd naturally get picked up
 
-1. Get the LV7008416379-on-Civáň-domesticated-only-axes re-run result
-   back (commands already given to the user, section 0) and compare
-   against the old wild-inclusive result.
-2. `6.7M_720` audit (section 3, steps 1-5) -- write the audit script,
+1. ~~Get the LV7008416379-on-Civáň-domesticated-only-axes re-run result
+   back~~ **Done, 2026-08-15** -- ranking held (aromatic nearest in both),
+   raw coordinates not comparable across the two axis-builder versions,
+   see section 0.
+2. **Done early, out of order, 2026-08-15**: masked-LOO classification-
+   power validation (originally item 5 below, gated on the reference-
+   first redesign landing first) -- ran it now on the *current*
+   per-sample-subset design instead of waiting, as a cheap diagnostic
+   for whether the 147-locus marker set has any discriminative power at
+   all before investing in the redesign. Results in section 0 above.
+   This should still be re-run once the frozen marker set from item 4
+   below exists, since the per-sample-subset design's marker set differs
+   from what the redesign will produce -- treat today's numbers as
+   "the 147-locus mask has real signal," not as a final validated
+   accuracy figure.
+3. **New, highest priority right now, 2026-08-15**: section 0.1's
+   full-panel sanity check (595 cultivated x full 2.365M Civáň markers,
+   no ancient sample, compare against the paper's own Fig. 2). This
+   should happen *before* further MAF/LD pruning design work or the
+   reference-first redesign, because it answers a more basic question
+   those both assume the answer to: is our converted Civáň panel
+   (genotype coding, REF/ALT orientation, marker alignment) actually
+   correct at all? Cheap to run, no new scripts needed beyond a plain
+   smartpca call.
+4. `6.7M_720` audit (section 3, steps 1-5) -- write the audit script,
    run it, decide Route A vs Route B pruning. This was explicitly
-   flagged as the most urgent because its provenance is the least
-   understood of the three panels.
-3. MAF + LD pruning for `29M_3k` and Civáň (sections 2 and 4), using
+   flagged as the most urgent *among the pruning-design questions*
+   because its provenance is the least understood of the three panels --
+   still comes after item 3 above.
+5. MAF + LD pruning for `29M_3k` and Civáň (sections 2 and 4), using
    whatever window/MAF sensitivity grid gets decided.
-4. The big one: reference-first architecture redesign (section 1) --
+6. The big one: reference-first architecture redesign (section 1) --
    rewrite `build_sample_panel_subset.py`/`merge_ancient_into_panel.py`/
    `run_sample_panel_pca.sh` so each panel gets ONE frozen pruned marker
    set and ONE smartpca run covering all 16 ancient samples together,
@@ -352,6 +440,10 @@ caveat as sections 3-4 above.)
    invalidates re-running section 7 of `ECOTYPE_PCA_PHASE1_COMMANDS.md`
    as currently written -- don't scale that out further until this
    redesign lands, or the 16-sample x 3-panel batch will need to be
-   thrown away and re-run anyway.
-5. Per-population LOO accuracy/false-positive-rate validation (section
-   4's LOO upgrade), once the frozen marker set exists to run it on.
+   thrown away and re-run anyway. (The 48-combo batch was run anyway on
+   2026-08-15 as a first look, with this caveat noted explicitly in
+   `ECOTYPE_PCA_PHASE1_COMMANDS.md` section 7 -- not a contradiction of
+   this TODO, a deliberate "first look, not final" call the user made.)
+7. Re-run item 2's masked-LOO classification-power validation on the
+   item 6 frozen marker set, once it exists, as the final version of
+   that check.
