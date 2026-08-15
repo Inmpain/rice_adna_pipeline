@@ -13,7 +13,15 @@ inter-point distances from one run cannot be compared numerically
 against another run, only qualitative structure can (which population a
 sample lands nearest to, relative cluster separation). This is exactly
 why each --evec gets its own subplot with its own independent axis
-scale, never a shared/overlaid plot.
+scale, never a shared/overlaid plot. This applies doubly to
+run_sample_panel_pca.sh batch output (ECOTYPE_PCA_PHASE1_COMMANDS.md
+section 7): each ancient sample there also gets its own private marker
+SUBSET (shrunk to that sample's own covered SNPs), on top of whatever
+reference set built the axes -- so even two civan-panel subplots in the
+same grid are two independently-built PCAs, not just two views of one
+shared space. Never conclude "sample A's PC1 is bigger than sample B's
+PC1" from this plot; only conclude "sample A projects closer to
+population X than to population Y" within its own subplot.
 
 Usage (single panel):
   python3 plot_pca_projection.py \\
@@ -28,11 +36,25 @@ Usage (side-by-side before/after comparison):
     --highlight LV7008416379 \\
     --title "Civan panel: wild-rice-in-axis fix, before vs after" \\
     --out civan_before_after.png
+
+Usage (batch grid -- e.g. all 16 samples for one panel from
+run_sample_panel_pca.sh's scale-out, ECOTYPE_PCA_PHASE1_COMMANDS.md
+section 7): each matched file becomes its own subplot, labeled by the
+part of its filename before the first '.' (i.e. the sample ID for
+run_sample_panel_pca.sh's SAMPLE.PANEL.TRACK.evec naming). No
+--highlight needed for these -- the ancient sample in each file already
+carries the "Ancient" population label and is auto-highlighted.
+  python3 plot_pca_projection.py \\
+    --evec-glob "/path/to/pca_runs/*.civan.TV.evec" \\
+    --ncols 4 \\
+    --title "Civan panel, all 16 ancient samples (each subplot its own axis scale)" \\
+    --out civan_all16_grid.png
 """
 
 from __future__ import annotations
 
 import argparse
+import glob
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -43,19 +65,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--evec",
         action="append",
-        required=True,
+        default=[],
         help="PANEL_LABEL=path/to/file.evec (repeatable) -- one subplot per entry, in the order given",
+    )
+    parser.add_argument(
+        "--evec-glob",
+        action="append",
+        default=[],
+        help="glob pattern (repeatable), e.g. 'pca_runs/*.civan.TV.evec' -- each match becomes its own "
+        "subplot, in sorted filename order, labeled by the filename's first '.'-delimited field "
+        "(the sample ID for run_sample_panel_pca.sh output); added after any --evec entries",
     )
     parser.add_argument(
         "--highlight",
         action="append",
         default=[],
-        help="individual ID to draw as a highlighted star and annotate by name (repeatable)",
+        help="individual ID to draw as a highlighted star and annotate by name (repeatable) -- "
+        "usually unnecessary since any row labeled 'Ancient' is already auto-highlighted",
     )
+    parser.add_argument("--ncols", type=int, default=4, help="subplot grid columns (default 4); rows added as needed")
     parser.add_argument("--min-pop-size", type=int, default=5, help="labels with fewer individuals (summed across all given evec files) are pooled into a single gray 'other (n<N)' bucket")
     parser.add_argument("--title", default=None, help="overall figure title")
     parser.add_argument("--out", required=True, help="output image path (.png)")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if not args.evec and not args.evec_glob:
+        parser.error("at least one --evec or --evec-glob is required")
+    return args
 
 
 def load_evec(path: Path) -> list[tuple[str, float, float, str]]:
@@ -91,6 +126,15 @@ def main(argv: list[str] | None = None) -> int:
             panel_label, path_str = Path(spec).stem, spec
         panels.append((panel_label, load_evec(Path(path_str))))
 
+    for pattern in args.evec_glob:
+        matches = sorted(glob.glob(pattern))
+        if not matches:
+            print(f"ERROR: --evec-glob pattern matched no files: {pattern!r}", file=sys.stderr)
+            return 1
+        for path_str in matches:
+            panel_label = Path(path_str).name.split(".")[0]
+            panels.append((panel_label, load_evec(Path(path_str))))
+
     counts: dict[str, int] = defaultdict(int)
     for _, rows in panels:
         for _, _, _, label in rows:
@@ -104,12 +148,14 @@ def main(argv: list[str] | None = None) -> int:
     color_of = {label: cmap(i % 20) for i, label in enumerate(kept_labels)}
     other_color = (0.55, 0.55, 0.55, 0.45)
 
-    fig, axes = plt.subplots(1, len(panels), figsize=(6.2 * len(panels), 5.6), squeeze=False)
-    axes = axes[0]
+    ncols = max(1, min(args.ncols, len(panels)))
+    nrows = -(-len(panels) // ncols)  # ceil division
+    fig, axes = plt.subplots(nrows, ncols, figsize=(6.2 * ncols, 5.6 * nrows), squeeze=False)
+    axes_flat = axes.flatten()
 
     highlight_set = set(args.highlight)
 
-    for ax, (panel_label, rows) in zip(axes, panels):
+    for ax, (panel_label, rows) in zip(axes_flat, panels):
         legend_seen: set[str] = set()
         for sample_id, pc1, pc2, label in rows:
             if sample_id in highlight_set or label in ("Ancient", "LOO_HELDOUT_EXCLUDED"):
@@ -138,6 +184,9 @@ def main(argv: list[str] | None = None) -> int:
         ax.set_ylabel("PC2 (this panel's own axis scale)")
         ax.set_title(panel_label)
         ax.legend(fontsize=6, markerscale=1.4, loc="best", ncol=1, framealpha=0.85)
+
+    for ax in axes_flat[len(panels):]:
+        ax.axis("off")
 
     if args.title:
         fig.suptitle(args.title)
