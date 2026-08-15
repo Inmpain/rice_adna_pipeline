@@ -55,11 +55,21 @@ japonica_(tropical)
 japonica_(temperate)
 ```
 
-**Not yet done**: re-running LV7008416379's Civáň projection with this
-fix to see whether "closest to aromatic" survives. Commands are already
-given to the user (see chat), result not yet returned as of this doc's
-last edit -- check `docs/ECOTYPE_PCA_PANEL.md`'s 📍 handoff block or ask
-before re-deriving.
+**Done, 2026-08-15**: re-ran LV7008416379's Civáň projection with
+`REFERENCE_LABELS_FILE` set to this file
+(`run_sample_panel_pca.sh ... TV /home/scratch/yinmt202607/gene/scripts/civan_domesticated_reference_labels.txt`,
+output in `gene/results/ecotype_pca/civan_refonly_check/`). **"Closest
+to aromatic" survives**: PC1/PC2 moved from (0.0283, -0.0074) to
+(0.0393, -0.0103) once wild rice was excluded from axis-building, but
+the ranking is unchanged -- aromatic nearest (dist 0.0086, was 0.0083),
+then japonica/japonica_(tropical)/japonica_(temperate) in the same
+order, then O._rufipogon/indica/aus far behind. The coordinate shift
+confirms wild rice *was* pulling the axes, but not enough to change
+which population this sample lands nearest to. Still one sample, 147
+TV sites, single pseudo-haploid draw -- bootstrap uncertainty
+(execution plan section 6) still not run, and this does not itself
+justify scaling out to the other 15 samples (see section 6 item 4 below
+-- reference-first redesign still blocks that).
 
 ## 1. Core architectural principle GPT's review established (not yet implemented)
 
