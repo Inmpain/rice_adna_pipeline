@@ -7,6 +7,79 @@
 
 ---
 
+## 📍📍 2026-08-15 新增：`scripts/ecotype_pca_v2/` ——冻结统计设计的独立新流水线
+
+**跟本文档下面所有内容（`scripts/ecotype_pca/`，下称v1）是并行的两套代码，
+不是替换关系**：
+
+- **v1（`scripts/ecotype_pca/`）**：本文档主体描述的流水线。唯一在服务器
+  真实数据上跑成功过的是Civáň panel、LV7008416379的leave-one-out冒烟测试
+  （见📍原有section第2/3条），以及poplist bug修复后2026-08-15的重新验证
+  （见📍原有section第3条，PC1/PC2从0.0283/-0.0074变到0.0393/-0.0103，排序
+  结论aromatic仍最近未变——**这条验证记录不是本次Claude Code会话做的**，
+  应该来自并行会话或用户直接操作，本次会话开始时被明确告知"除了最初那次
+  bug版本的冒烟测试，其余全部没在服务器跑过"，与本节内容有出入，接手时
+  以`squeue`/`ls`实测结果为准，不要假设任一版本的说法绝对准确）。
+  `pseudo_haploid_call.py`（v1的伪单倍型调用脚本）本次会话修了两轮真实
+  bug（见下）。
+- **v2（`scripts/ecotype_pca_v2/`）**：本次会话新开的独立目录，用户给了一份
+  "STATISTICAL DESIGN IS FROZEN"的完整冻结规范（`docs/ECOTYPE_PCA_V2_SPEC.md`），
+  核心是修正v1的一个设计缺陷——v1的`build_sample_panel_subset.py`每个古样本
+  各自把panel缩到自己覆盖的位点再建轴，导致不同古样本的PC1/PC2其实是不同
+  marker set上算出来的，不能跨样本比较；v2改成reference-first：**先用现代
+  参考样本冻结MAF/LD-pruned的marker set和PCA轴，古样本只做投影，永远不参与
+  建轴**。v2目前**完全没有在服务器真实数据上跑过**——只在本机构造的合成
+  EIGENSTRAT/BAM数据上跑通过33+18个单元/集成测试（pure-Python部分实际跑过，
+  `test_integration_synthetic.sh`需要plink2，本机没有，没跑）。
+
+**v2当前状态（3次commit，`codex/ecotype-pca-panel`分支）**：
+1. `10878d7`——Batch 1初版：`00`-`08`共9个脚本+`lib_ecotype_v2.py`+config。
+2. `03032ed`——Batch 1 correction：修复GPT review发现的15项实现问题（enum
+   硬校验、04的LD计算改成分块流式避免OOM、07/08接口修复、manifest字段拆分、
+   overwrite保护等），新增33个实测通过的单元测试。
+3. 两个data question（Civáň japonica标签带不带括号；Panel B用raw 720还是
+   filtered 718、2个UNK的技术状态）**没有替用户决定，等确认**。
+4. **capture bait BED全仓库4个分支都搜不到**，capture track（CAPTURE.TV/
+   CAPTURE.ALL）完全被卡住，shotgun track不受影响。
+
+**v2脚本清单**（全部`scripts/ecotype_pca_v2/`下）：
+`config/ecotype_pca_v2.yaml`（唯一参数来源，冻结）、`lib_ecotype_v2.py`
+（共享库）、`00_validate_inputs.py`（输入/工具/标签校验，SHOTGUN_READY与
+BATCH_1_FULL两级门禁）、`01_make_panel_manifest.py`、
+`02_convert_eigenstrat_for_plink.sh`（convertf转换）、`03_audit_panel.py`
+（MAF/missingness/spacing审计）、`04_audit_720_ld.py`（720面板LD衰减，
+分块+halo算法）、`05_intersect_panel_baits.py`（capture bait交集，**当前
+被阻塞**）、`06_build_reference_sample_set.py`（每个panel的axis-builder
+keep-list，含595/718-720/五标签的硬校验）、`07_make_fixed_markers.sh`
+（geno→MAF→LD剪枝，冻结`*.fixed.snplist`）、`08_make_5kb_thinned_markers.py`
+（Panel B的paperlike_5kb路线）。`tests/`下4个测试文件。
+
+**v1本次会话修的两处真实bug**（`scripts/ecotype_pca/pseudo_haploid_call.py`，
+commit `a4fb1e6`+`c058189`）：
+1. TV/ALL两次运行共享同一条全局随机数流，导致共同的transversion位点在
+   两次运行里抽到不同read——用合成BAM实测复现（同一位点同一seed，TV调用
+   出0，ALL调用出2），改成按`(seed, contig, position)`哈希算每个位点独立
+   随机数后，两次运行在共享位点上完全一致（已实测验证）。这个bug如果不修，
+   **今后任何"TV和ALL结果不一致，是否因为transition信号"的判断都不可信**。
+   v1目前唯一跑过的Civáň LOO测试只用了TV单轨，不受这个bug影响，不需要
+   重跑；但今后一旦要正式对比TV/ALL两条轨迹，必须用修复后的版本。
+2. `call_rate`拆成`eligible_site_call_rate`（原公式，覆盖深度主导）和
+   `allele_match_rate_among_covered`（只看真正抽到read的位点，是数据质量
+   信号），避免一个数字混淆两个问题。
+
+**两个仍未解决、需要你确认的数据问题**（本次会话已报告，未替你决定）：
+1. `pseudo_haploid_call.py`的`ignore_overlaps=False`要不要改——取决于
+   besthit过滤后的BAM里是不是已经是合并(collapsed)的古DNA read，还是原始
+   未合并的paired mate。需要在服务器跑：
+   ```bash
+   samtools view -c sample.bam
+   samtools view -c -f 1 sample.bam
+   samtools view -c -f 2 sample.bam
+   ```
+2. v2的两个data question（见上）。
+
+---
+
 ## 📍 给接手人的启动指令（新会话/新窗口先读这里，2026-08-14更新）
 
 **⚠️2026-08-14更新：上一版(2026-08-13深夜)说"批量铺开已开始"是不准确的
@@ -65,14 +138,20 @@ pruning）**实际上都还没有在服务器上真正跑过**，之前给的都
    6.7M SNP矩阵是论文第一作者私下发的加密版本，来源和处理流程完全
    不透明，跟论文本身发表的60,722-marker分析集不是一回事。
 5. **三个panel目前都没有做过MAF/LD pruning**，只做过UNK剔除——这是
-   `ECOTYPE_PCA_PANEL_QC_DESIGN.md`记录的核心待办，还没开始。
+   `ECOTYPE_PCA_PANEL_QC_DESIGN.md`记录的核心待办，还没开始。**2026-
+   08-15更新：这条已经在`scripts/ecotype_pca_v2/`里用冻结统计设计
+   重新实现（见本文档最上方新增小节），但v2还没在服务器真实数据上
+   跑过，v1这边仍然维持"没做过MAF/LD pruning"的原状，不要混淆两套
+   代码的进度。**
 6. **样本专属子集PCA(`build_sample_panel_subset.py`)的设计缺陷**：
    每个古样本单独跑一次、每次都把panel缩到该样本自己覆盖的SNP——这
    意味着不同古样本的"PC1"其实是不同marker set上算出来的，不能直接
    拿来比较（比如画时间轨迹）。`ECOTYPE_PCA_PANEL_QC_DESIGN.md`第1节
    给出了正确设计(reference-first、每个panel冻结一套marker set、单
    次smartpca覆盖全部古样本)，**这是当前最大的一块未完成重构，还没
-   开始动手**。
+   开始动手**。**2026-08-15更新：这条重构就是`scripts/ecotype_pca_v2/`
+   要解决的问题，设计已经落地成脚本，但还没在服务器上跑，见本文档
+   最上方新增小节。**
 
 **集群基础设施问题（跟本分支设计无关，但会直接导致SLURM作业失败，
 已写入长期记忆）**：`/itp`挂载点不覆盖`node06`(曾经也包括临时down掉
@@ -84,7 +163,8 @@ review + MAF/LD设计 + 待办顺序) → `docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`
 (标签匹配→矩阵瘦身→样本专属子集PCA→leave-one-out的服务器命令原样
 记录，跟`ECOTYPE_PCA_PHASE0_COMMANDS.md`一个风格)。本文档回答"为
 什么"，PHASE1_COMMANDS"照抄命令用"，QC_DESIGN"下一步做什么、参数
-怎么定"。
+怎么定"。**v2的对应入口是`docs/ECOTYPE_PCA_V2_SPEC.md`（冻结规范）
++ 本文档最上方新增小节（现状）。**
 
 ---
 
@@ -732,7 +812,7 @@ convertf已知解析行为——convertf检测到"全部样本都被判定为ign
 | # | 脚本 | 仓库路径 | 状态 |
 |---|---|---|---|
 | ① | `map_besthit_to_irgsp.sh` | `scripts/ecotype_pca/` | **已完成**，16样本全部跑完，改用全基因组besthit读集（放弃了ORSC窄化，见`docs/ECOTYPE_PCA_PHASE1_COMMANDS.md`开头决策记录） |
-| ② | `pseudo_haploid_call.py` | `scripts/ecotype_pca/` | **已完成并验证**，LV7008416379在Civáň panel上的调用结果（called=147）跟独立的`summarize_panel_overlap.py`普查预测完全一致 |
+| ② | `pseudo_haploid_call.py` | `scripts/ecotype_pca/` | **已完成并验证**，LV7008416379在Civáň panel上的调用结果（called=147）跟独立的`summarize_panel_overlap.py`普查预测完全一致。**2026-08-15：本脚本修了两轮真实bug（TV/ALL随机数流错位、call_rate指标拆分），见本文档最上方新增小节** |
 | ②.5 | `build_sample_panel_subset.py`（**新增**） | `scripts/ecotype_pca/` | **已完成并验证**，把panel从百万级SNP瘦身到样本实际覆盖的几百个位点，`--mask-from`支持leave-one-out场景下"用真古样本的覆盖模式、取模拟样本的值"这种row-对齐需求 |
 | ②.6 | `simulate_leaveoneout_projection.py`（**新增**） | `scripts/ecotype_pca/` | **已完成并验证**，leave-one-out正对照通过，REF/ALT方向确认无误 |
 | ③ | `merge_ancient_into_panel.py` | `scripts/ecotype_pca/` | **已完成并验证** |
