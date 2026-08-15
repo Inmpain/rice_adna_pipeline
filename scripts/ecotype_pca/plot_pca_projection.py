@@ -83,6 +83,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="individual ID to draw as a highlighted star and annotate by name (repeatable) -- "
         "usually unnecessary since any row labeled 'Ancient' is already auto-highlighted",
     )
+    parser.add_argument("--pc-x", type=int, default=1, help="which PC (1-indexed) to plot on the x axis (default 1)")
+    parser.add_argument("--pc-y", type=int, default=2, help="which PC (1-indexed) to plot on the y axis (default 2)")
     parser.add_argument("--ncols", type=int, default=4, help="subplot grid columns (default 4); rows added as needed")
     parser.add_argument("--min-pop-size", type=int, default=5, help="labels with fewer individuals (summed across all given evec files) are pooled into a single gray 'other (n<N)' bucket")
     parser.add_argument("--title", default=None, help="overall figure title")
@@ -93,7 +95,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-def load_evec(path: Path) -> list[tuple[str, float, float, str]]:
+def load_evec(path: Path, pc_x: int, pc_y: int) -> list[tuple[str, float, float, str]]:
+    """pc_x/pc_y are 1-indexed PC numbers (PC1, PC2, ...), matching .evec's own column numbering."""
     rows = []
     with path.open() as handle:
         first = handle.readline()
@@ -101,13 +104,14 @@ def load_evec(path: Path) -> list[tuple[str, float, float, str]]:
             raise ValueError(f"{path}: expected first line to start with '#' (smartpca's eigvals header, possibly indented), got {first[:40]!r}")
         for line_no, line in enumerate(handle, start=2):
             fields = line.split()
-            if len(fields) < 4:
-                raise ValueError(f"{path}:{line_no}: expected at least 4 fields (id, pc1, pc2, ..., label), got {len(fields)}: {line!r}")
+            need = 1 + max(pc_x, pc_y) + 1  # id + PCs up to the higher requested one + label
+            if len(fields) < need:
+                raise ValueError(f"{path}:{line_no}: expected at least {need} fields (id, PC1..PC{max(pc_x, pc_y)}, ..., label) to plot PC{pc_x}/PC{pc_y}, got {len(fields)}: {line!r}")
             sample_id = fields[0]
-            pc1 = float(fields[1])
-            pc2 = float(fields[2])
+            x = float(fields[pc_x])
+            y = float(fields[pc_y])
             label = fields[-1]
-            rows.append((sample_id, pc1, pc2, label))
+            rows.append((sample_id, x, y, label))
     return rows
 
 
@@ -124,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
             panel_label, path_str = spec.split("=", 1)
         else:
             panel_label, path_str = Path(spec).stem, spec
-        panels.append((panel_label, load_evec(Path(path_str))))
+        panels.append((panel_label, load_evec(Path(path_str), args.pc_x, args.pc_y)))
 
     for pattern in args.evec_glob:
         matches = sorted(glob.glob(pattern))
@@ -133,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         for path_str in matches:
             panel_label = Path(path_str).name.split(".")[0]
-            panels.append((panel_label, load_evec(Path(path_str))))
+            panels.append((panel_label, load_evec(Path(path_str), args.pc_x, args.pc_y)))
 
     counts: dict[str, int] = defaultdict(int)
     for _, rows in panels:
@@ -180,8 +184,8 @@ def main(argv: list[str] | None = None) -> int:
                 fontsize=8, fontweight="bold",
             )
 
-        ax.set_xlabel("PC1 (this panel's own axis scale)")
-        ax.set_ylabel("PC2 (this panel's own axis scale)")
+        ax.set_xlabel(f"PC{args.pc_x} (this panel's own axis scale)")
+        ax.set_ylabel(f"PC{args.pc_y} (this panel's own axis scale)")
         ax.set_title(panel_label)
         ax.legend(fontsize=6, markerscale=1.4, loc="best", ncol=1, framealpha=0.85)
 
