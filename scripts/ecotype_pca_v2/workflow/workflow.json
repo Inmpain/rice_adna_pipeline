@@ -124,14 +124,18 @@
     },
     {
       "id": "50_civan_fixed_marker_prototype",
-      "title": "Run LV7008416379 Civán fixed-marker TV/ALL prototype and exact-mask validation",
+      "title": "Run coverage-aware Civán TV/ALL projection with fixed modern axes",
       "kind": "command",
       "prerequisites": ["40_fixed_projection_implementation"],
       "resource": "slurm",
-      "command": ["bash", "scripts/ecotype_pca_v2/workflow/runners/50_civan_fixed_marker_prototype.sh"],
-      "slurm_hint": "Runs one 1000-marker pooled_mixed Civán TV prototype for LV7008416379; submit with the documented SLURM wrapper.",
+      "command": ["bash", "scripts/ecotype_pca_v2/workflow/runners/50_civan_coverage_aware_projection.sh"],
+      "slurm_hint": "Export CIVAN_UNION_SITES, CIVAN_UNION_SITES_TV, CIVAN_REFERENCE_KEEP, and CIVAN_ANCIENT_SAMPLES before submitting.",
       "tracked_files": [
-        "scripts/ecotype_pca_v2/workflow/runners/50_civan_fixed_marker_prototype.sh",
+        "scripts/ecotype_pca_v2/workflow/runners/50_civan_coverage_aware_projection.sh",
+        "scripts/ecotype_pca_v2/19_survey_ancient_coverage.py",
+        "scripts/ecotype_pca_v2/20_filter_coverage_sites_to_transversions.py",
+        "scripts/ecotype_pca_v2/21_extract_fixed_snplist.py",
+        "scripts/ecotype_pca_v2/22_classify_scientific_projection.py",
         "scripts/ecotype_pca_v2/10_call_ancient_fixed_markers.py",
         "scripts/ecotype_pca_v2/11_build_ancient_callability.py",
         "docs/ECOTYPE_PCA_V2_SPEC.md"
