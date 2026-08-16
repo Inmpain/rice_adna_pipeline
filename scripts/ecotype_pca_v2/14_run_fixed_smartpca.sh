@@ -9,6 +9,6 @@ python3 - "$CFG" "$P.par" "$GENO" "$SNP" "$IND" "$POP" "$P" <<'PY'
 import sys,yaml
 c=yaml.safe_load(open(sys.argv[1]))['pca']; out,geno,snp,ind,pop,prefix=sys.argv[2:]
 with open(out,'x') as f:
- for k,v in [('genotypename',geno),('snpname',snp),('indivname',ind),('evecoutname',prefix+'.evec'),('evaloutname',prefix+'.eval'),('poplistname',pop),('lsqproject','YES'),('numoutevec',c['numoutevec']),('numoutlieriter',c['numoutlieriter']),('numchrom',c['numchrom']),('numthreads',c['numthreads'])]: f.write(f'{k}: {v}\n')
+ for k,v in [('genotypename',geno),('snpname',snp),('indivname',ind),('evecoutname',prefix+'.evec'),('evaloutname',prefix+'.eval'),('poplistname',pop),('lsqproject','YES'),('numoutevec',c['num_pcs']),('numoutlieriter',c['numoutlieriter']),('numchrom',c['numchrom']),('numthreads',c['numthreads'])]: f.write(f'{k}: {v}\n')
 PY
 smartpca -p "$P.par" > "$P.smartpca.log" 2>&1; test -s "$P.evec"; test -s "$P.eval"; echo "PASS: $P"
