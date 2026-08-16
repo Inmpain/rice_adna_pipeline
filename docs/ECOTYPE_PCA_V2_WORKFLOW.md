@@ -90,6 +90,9 @@ Run the preflight with the versioned submission helper. It requests 2 CPUs,
 bash scripts/ecotype_pca_v2/workflow/submit_stage.sh 10
 ```
 
+The helper prints the newest SLURM log tail even when the job fails, so the
+`DEBUG_BUNDLE=...` line is visible without another long shell command.
+
 The first real attempt on commit `33ae004` correctly failed before BAM scanning:
 PLINK2 2.0 rejected LD estimation on the old 10-axis-builder synthetic fixture.
 The corrected fixture has 60 axis builders; production commands do not use
