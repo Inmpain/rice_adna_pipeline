@@ -102,14 +102,24 @@
     {
       "id": "40_fixed_projection_implementation",
       "title": "Implement and validate v2 scripts 09-18 before any ancient fixed-marker prototype",
-      "kind": "blocked",
+      "kind": "command",
       "prerequisites": ["30_civan_full_modern_review"],
-      "blockers": [
-        "scripts 09_export_fixed_reference_eigenstrat.py through 18_validation_metrics.py do not exist yet",
-        "implementation must be reviewed against the accepted Civán full-modern evidence before this stage is opened"
-      ],
+      "resource": "local",
+      "command": ["bash", "scripts/ecotype_pca_v2/workflow/runners/40_fixed_projection_implementation.sh"],
       "tracked_files": [
-        "docs/ECOTYPE_PCA_V2_SPEC.md"
+        "scripts/ecotype_pca_v2/fixed_projection_lib.py",
+        "scripts/ecotype_pca_v2/09_export_fixed_reference_eigenstrat.py",
+        "scripts/ecotype_pca_v2/10_call_ancient_fixed_markers.py",
+        "scripts/ecotype_pca_v2/11_build_ancient_callability.py",
+        "scripts/ecotype_pca_v2/12_build_ancient_overlap_matrix.py",
+        "scripts/ecotype_pca_v2/13_merge_ancients_fixed_panel.py",
+        "scripts/ecotype_pca_v2/14_run_fixed_smartpca.sh",
+        "scripts/ecotype_pca_v2/15_pca_qc.py",
+        "scripts/ecotype_pca_v2/16_projection_summary.py",
+        "scripts/ecotype_pca_v2/17_exact_mask_validation.py",
+        "scripts/ecotype_pca_v2/18_validation_metrics.py",
+        "scripts/ecotype_pca_v2/tests/test_fixed_projection_contract.py",
+        "scripts/ecotype_pca_v2/workflow/runners/40_fixed_projection_implementation.sh"
       ]
     },
     {
