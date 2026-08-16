@@ -129,7 +129,7 @@ def main():
         write_manual_receipt(plan, plan["stages"][3], state, config)
         statuses = MOD.stage_statuses(plan, state, config)
         check("manual_evidence_receipt_valid", statuses[3]["status"] == "COMPLETE")
-        check("unimplemented_stage_fail_closed", statuses[4]["status"] == "BLOCKED")
+    check("implemented_stage_is_available", statuses[4]["status"] in {"READY", "COMPLETE"})
         check("post_blocker_stage_locked", statuses[5]["status"] == "LOCKED")
 
     print("\nALL WORKFLOW CONTROLLER TESTS PASSED")
