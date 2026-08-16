@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 {10|20} [STATE_DIR]"
+  echo "Usage: $0 {10|20|50} [STATE_DIR]"
   echo "Default STATE_DIR: /home/scratch/yinmt202607/gene/results/ecotype_pca_v2/workflow_state"
 }
 
@@ -32,8 +32,13 @@ case "$STAGE" in
     JOB_NAME="pca2_civan_full"
     MEMORY="24G"
     ;;
+  50|50_civan_fixed_marker_prototype)
+    STAGE_ID="50_civan_fixed_marker_prototype"
+    JOB_NAME="pca2_civan_proto"
+    MEMORY="8G"
+    ;;
   *)
-    echo "FATAL: stage must be 10 or 20" >&2
+    echo "FATAL: stage must be 10, 20, or 50" >&2
     usage
     exit 2
     ;;
