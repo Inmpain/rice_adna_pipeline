@@ -37,6 +37,7 @@
         "scripts/ecotype_pca_v2/tests/test_08_streaming.py",
         "scripts/ecotype_pca_v2/tests/test_04_ld_chunking.py",
         "scripts/ecotype_pca_v2/workflow/ecotype_pca_workflow.py",
+        "scripts/ecotype_pca_v2/workflow/submit_stage.sh",
         "scripts/ecotype_pca_v2/workflow/tests/test_workflow_controller.py",
         "scripts/ecotype_pca_v2/workflow/tests/test_collect_server_evidence.py",
         "scripts/ecotype_pca_v2/workflow/runners/00_repo_selfcheck.sh"
@@ -64,6 +65,7 @@
         "scripts/ecotype_pca_v2/tests/test_integration_synthetic.sh",
         "scripts/ecotype_pca/tests/test_pseudo_haploid_call.py",
         "scripts/ecotype_pca_v2/workflow/collect_server_evidence.py",
+        "scripts/ecotype_pca_v2/workflow/submit_stage.sh",
         "scripts/ecotype_pca_v2/workflow/runners/10_server_preflight.sh"
       ]
     },
@@ -77,6 +79,7 @@
       "slurm_hint": "Use the documented sbatch --wait command; the receipt is written only after smartpca and both plots finish.",
       "tracked_files": [
         "scripts/ecotype_pca/plot_pca_projection.py",
+        "scripts/ecotype_pca_v2/workflow/submit_stage.sh",
         "scripts/ecotype_pca_v2/workflow/runners/20_civan_full_modern_sanity.sh"
       ]
     },

@@ -8,6 +8,8 @@ Contents:
 - `workflow.json`: authoritative linear stage/gate list and tracked files.
 - `ecotype_pca_workflow.py`: standard-library controller (`status`, `next`,
   `run`, `accept`, `debug-bundle`).
+- `submit_stage.sh`: short, versioned SLURM submission command for stages 10
+  and 20, with fixed resources and the standard state directory.
 - `runners/`: exact commands for stages currently implemented.
 - `collect_server_evidence.py`: read-only raw/filtered sample diff and BAM pair
   flag census used to resolve the 720/718 and overlap questions; one

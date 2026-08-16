@@ -83,14 +83,11 @@ regression test to pass.
 
 ## Stages 10 and 20 through SLURM
 
-Run the preflight with bounded CPU and memory:
+Run the preflight with the versioned submission helper. It requests 2 CPUs,
+8 GB memory and 24 hours, waits for completion, then prints workflow status:
 
 ```bash
-sbatch --wait -p comp --exclude=node05,node06 \
-  -c 2 --mem 8G -t 24:00:00 \
-  -J pca2_preflight \
-  -o "$STATE/10_server_preflight.%j.slurm.log" \
-  --wrap="cd '$SRC' && python3 '$CTL' --state-dir '$STATE' run 10_server_preflight"
+bash scripts/ecotype_pca_v2/workflow/submit_stage.sh 10
 ```
 
 The first real attempt on commit `33ae004` correctly failed before BAM scanning:
@@ -99,15 +96,11 @@ The corrected fixture has 60 axis builders; production commands do not use
 PLINK2's unsafe `--bad-ld` override. BAM paired/proper-pair evidence now uses
 one `samtools flagstat` scan per BAM instead of three full scans.
 
-After stage 10 has a valid receipt, submit stage 20 from the immutable source
-directory:
+After stage 10 has a valid receipt, stage 20 uses the same helper with 2 CPUs,
+24 GB memory and 24 hours:
 
 ```bash
-sbatch --wait -p comp --exclude=node05,node06 \
-  -c 2 --mem 24G -t 24:00:00 \
-  -J pca2_civan_full \
-  -o "$STATE/20_civan_full.%j.slurm.log" \
-  --wrap="cd '$SRC' && python3 '$CTL' --state-dir '$STATE' run 20_civan_full_modern_sanity"
+bash scripts/ecotype_pca_v2/workflow/submit_stage.sh 20
 ```
 
 The computational receipt is written only after smartpca, row-count checks and

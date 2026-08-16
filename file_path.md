@@ -325,6 +325,7 @@ scripts/ecotype_pca_v2/
 └── workflow/
     ├── workflow.json                 # 唯一阶段顺序/门禁定义
     ├── ecotype_pca_workflow.py       # 状态机控制器
+    ├── submit_stage.sh               # stage 10/20短命令SLURM提交器
     ├── collect_server_evidence.py    # 720/718与BAM单次flagstat只读证据
     ├── runners/                      # 当前已开放阶段的精确runner
     └── tests/                        # 顺序、digest、stale receipt回归测试

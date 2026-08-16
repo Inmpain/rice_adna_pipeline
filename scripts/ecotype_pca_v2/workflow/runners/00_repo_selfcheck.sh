@@ -14,10 +14,13 @@ python3 scripts/ecotype_pca_v2/workflow/ecotype_pca_workflow.py \
   validate-plan
 
 for script in scripts/ecotype_pca_v2/*.sh \
+              scripts/ecotype_pca_v2/workflow/*.sh \
               scripts/ecotype_pca_v2/workflow/runners/*.sh \
               scripts/ecotype_pca_v2/bootstrap_ecotype_pca_v2.sh; do
   bash -n "$script"
 done
+
+bash scripts/ecotype_pca_v2/workflow/submit_stage.sh --help >/dev/null
 
 python3 scripts/ecotype_pca_v2/tests/test_lib_ecotype_v2.py
 python3 scripts/ecotype_pca_v2/tests/test_06_and_01_logic.py
