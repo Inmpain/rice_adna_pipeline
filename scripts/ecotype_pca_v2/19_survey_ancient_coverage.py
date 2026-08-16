@@ -14,7 +14,7 @@ BAM actually covers (ancient_union_sites.tsv), the subset covered by at least
 and a per-sample coverage summary. This survey deliberately does not filter
 by transversion/transition -- see 20_filter_coverage_sites_to_transversions.py
 for that post-filter step, which does not require re-scanning any BAM. Wiring
-the result into Stage 50 is a separate follow-up.
+the result is consumed by the registered coverage-aware Stage 50 runner.
 """
 
 from __future__ import annotations

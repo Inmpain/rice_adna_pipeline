@@ -1,6 +1,6 @@
 # Rice aDNA pipeline — project status
 
-Last updated: 2026-08-16. This file was previously truncated; this compact
+Last updated: 2026-08-17. This file was previously truncated; this compact
 version restores the current project-level view. Workstream details remain in
 their branch handoff documents rather than being duplicated here.
 
@@ -17,9 +17,9 @@ their branch handoff documents rather than being duplicated here.
 - Active branch: `codex/ecotype-pca-panel`.
 - Statistical design: reference-first, one frozen modern marker set and one PCA
   coordinate system per panel; ancient samples are projection-only.
-- Implemented analysis components: scripts 00–08 (input validation, manifests,
-  PLINK conversion, audits, reference-set construction, marker freezing and
-  Panel-B 5kb thinning).
+- Implemented analysis components: scripts 00–22, including fixed-reference
+  export, ancient calling/callability, merge/projection/QC, coverage survey,
+  transversion filtering and scientific projection tiers.
 - Implemented execution control: a receipt-based ordered workflow under
   `scripts/ecotype_pca_v2/workflow/`. It refuses skipped stages, invalidates
   stale receipts after code/config changes, preserves every failed attempt and
@@ -29,18 +29,18 @@ their branch handoff documents rather than being duplicated here.
 
 ## Current next stage
 
-Run stage 00 on the login node, then stage 10 through SLURM; stage 10 scans
-large panel metadata and one `samtools flagstat` pass per BAM. The first
-server attempt on `33ae004` exposed a PLINK2 synthetic-fixture incompatibility
-(10 axis builders, while current PLINK2 requires at least 50 for LD); the
-fixture is now 60 and PLINK threads are allocation-bounded. After stage 10,
-run stage 20 (full modern Civán sanity PCA) inside SLURM. Stage 30 requires
-human review of PC1–2 and PC3–4.
+Stages 00–40 are complete. Rerun coverage-aware Stage 50 through
+`workflow/submit_coverage_aware_stage50.sh`; it discovers and validates the
+real ALL union, TV union, Civán reference keep-list and 16 BAMs, then creates a
+new controller attempt. The old first-1000-TV-marker attempt remains an audit
+artifact and cannot support biological conclusions. TV is the primary track;
+ALL is damage-sensitive sensitivity analysis. Do not unlock Stage 60.
 
 ## Fail-closed blockers
 
-- v2 scripts 09–20 are not implemented; fixed-marker ancient prototype and
-  production stages remain locked in `workflow.json`.
+- Stage 60 remains blocked pending accepted Civán results and exact-mask
+  encoding/orientation validation; a technically successful Stage 50 does not
+  auto-accept it.
 - Panel B raw 720 versus filtered 718 must be decided from technical evidence,
   not population labels.
 - Capture-track work has no confirmed bait BED. Shotgun work is independent.

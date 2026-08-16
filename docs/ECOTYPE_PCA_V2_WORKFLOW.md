@@ -38,8 +38,8 @@ validation and manual gates remain separate stages.
 | 10 | Real server preflight, synthetic integration, BAM/panel evidence in SLURM | open after 00 |
 | 20 | Full 2.365M-marker Civán modern-only PCA in SLURM | open after 00/10 |
 | 30 | Human review of PC1–2, PC3–4, log and summary | manual gate |
-| 40 | Implement/test v2 scripts 09–18 | fail-closed blocker |
-| 50 | LV7008416379 Civán fixed-marker prototype | locked |
+| 40 | Implement/test v2 scripts 09–18 | complete on current server state; rerun if digest is stale |
+| 50 | Coverage-aware Civán ALL/TV projection of all 16 ancient samples | open after 40 |
 | 60 | 3K MAF=0.01 fixed-marker prototype | locked |
 | 70 | Decide 720/718 and run corrected Panel-B audit | locked |
 | 80 | All-ancient production plus sensitivity/cross-panel summary | locked |
@@ -149,3 +149,25 @@ python3 "$CTL" --state-dir "$STATE" debug-bundle
 ```
 
 Never edit a receipt by hand and never copy a receipt between state roots.
+
+## Coverage-aware Stage 50
+
+The historical first-1000-TV-marker attempt is diagnostic only. The current
+registered Stage 50 fixes modern Civán axes, projects every requested ancient
+sample on separate ALL and TV callable marker sets, and records scientific
+tiers without changing frozen MAPQ/BaseQ, MAF, or low-information thresholds.
+TV is primary; ALL is a damage-sensitive sensitivity track.
+
+From an immutable source snapshot at the current commit, run:
+
+```bash
+bash scripts/ecotype_pca_v2/workflow/submit_coverage_aware_stage50.sh
+```
+
+The entry script discovers real inputs under the configured results root and
+refuses zero or ambiguous candidates. It validates the three input files, all
+16 BAMs, the current QC fix and controller registration before submission.
+Every retry is created by the controller in a new timestamped attempt. The
+script checks and prints both tracks' `pca_qc.tsv`,
+`scientific_projection.tsv`, and `callability.tsv` after success. It never
+accepts or unlocks Stage 60.

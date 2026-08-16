@@ -29,6 +29,15 @@ OUT="$RICE_PCA_ATTEMPT_DIR"
 SUMMARY="$OUT/stage50_summary.tsv"
 printf 'track\tsample\tbam_path\ttechnical_execution\ttechnical_note\n' > "$SUMMARY"
 
+read -r -a ANCIENT_SAMPLE_IDS <<< "$CIVAN_ANCIENT_SAMPLES"
+[[ ${#ANCIENT_SAMPLE_IDS[@]} -gt 0 ]] || { echo "FATAL: no ancient samples supplied" >&2; exit 2; }
+SEEN_SAMPLE_IDS=" "
+for SAMPLE in "${ANCIENT_SAMPLE_IDS[@]}"; do
+  [[ "$SAMPLE" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "FATAL: invalid ancient sample ID: $SAMPLE" >&2; exit 2; }
+  [[ "$SEEN_SAMPLE_IDS" != *" $SAMPLE "* ]] || { echo "FATAL: duplicate ancient sample ID: $SAMPLE" >&2; exit 2; }
+  SEEN_SAMPLE_IDS+="$SAMPLE "
+done
+
 for TRACK in ALL TV; do
   echo "=== track $TRACK ==="
   case "$TRACK" in
@@ -51,11 +60,15 @@ for TRACK in ALL TV; do
   REFERENCE_PREFIX="$TRACK_DIR/civan.pooled_mixed.$TRACK.fixed_reference"
 
   CALLS_ARGS=()
-  for SAMPLE in $CIVAN_ANCIENT_SAMPLES; do
+  REPORT_ARGS=()
+  TECHNICAL_FAILURE_N=0
+  for SAMPLE in "${ANCIENT_SAMPLE_IDS[@]}"; do
     BAM="$BAMDIR/$SAMPLE.besthit_oryza.irgsp.bam"
+    REPORT_ARGS+=("$SAMPLE=$TRACK_DIR/calls/$SAMPLE.C.pooled_mixed.$TRACK.call_report.tsv")
     if [[ ! -s "$BAM" ]]; then
       echo "WARNING: $TRACK/$SAMPLE: BAM missing or empty, technical_execution=FAIL" >&2
       printf '%s\t%s\t%s\tFAIL\t%s\n' "$TRACK" "$SAMPLE" "$BAM" "BAM missing or empty" >> "$SUMMARY"
+      TECHNICAL_FAILURE_N=$((TECHNICAL_FAILURE_N + 1))
       continue
     fi
     set +e
@@ -72,24 +85,37 @@ for TRACK in ALL TV; do
       NOTE=$(tail -1 "$TRACK_DIR/calls/$SAMPLE.$TRACK.stderr.log" 2>/dev/null || echo "unknown error")
       echo "WARNING: $TRACK/$SAMPLE: calling step failed (exit $RC): $NOTE" >&2
       printf '%s\t%s\t%s\tFAIL\t%s\n' "$TRACK" "$SAMPLE" "$BAM" "$NOTE" >> "$SUMMARY"
+      TECHNICAL_FAILURE_N=$((TECHNICAL_FAILURE_N + 1))
     fi
   done
+
+  REPORT_CLI=()
+  for a in "${REPORT_ARGS[@]}"; do REPORT_CLI+=(--call-report "$a"); done
+  python3 scripts/ecotype_pca_v2/22_classify_scientific_projection.py \
+    "${REPORT_CLI[@]}" \
+    --out "$TRACK_DIR/civan.$TRACK.scientific_projection.tsv"
 
   if [[ ${#CALLS_ARGS[@]} -eq 0 ]]; then
     echo "FATAL: track $TRACK: no sample completed the calling step" >&2
     exit 3
   fi
+  if [[ $TECHNICAL_FAILURE_N -ne 0 ]]; then
+    echo "FATAL: track $TRACK: $TECHNICAL_FAILURE_N/${#ANCIENT_SAMPLE_IDS[@]} sample(s) failed technical calling; refusing an incomplete Stage 50 receipt" >&2
+    exit 3
+  fi
 
+  CALLS_CLI=()
+  for a in "${CALLS_ARGS[@]}"; do CALLS_CLI+=(--calls "$a"); done
   python3 scripts/ecotype_pca_v2/11_build_ancient_callability.py \
     --config "$RICE_PCA_CONFIG" --fixed-snp "$REFERENCE_PREFIX.snp" \
-    $(for a in "${CALLS_ARGS[@]}"; do printf -- '--calls %s ' "$a"; done) \
+    "${CALLS_CLI[@]}" \
     --panel C --library-type pooled_mixed --track "$TRACK" \
     --out "$TRACK_DIR/civan.$TRACK.callability.tsv"
 
   python3 scripts/ecotype_pca_v2/13_merge_ancients_fixed_panel.py \
     --reference-geno "$REFERENCE_PREFIX.eigenstratgeno" --reference-ind "$REFERENCE_PREFIX.ind" \
     --fixed-snp "$REFERENCE_PREFIX.snp" \
-    $(for a in "${CALLS_ARGS[@]}"; do printf -- '--calls %s ' "$a"; done) \
+    "${CALLS_CLI[@]}" \
     --ancient-poplabel Ancient --label civan --out-dir "$TRACK_DIR"
 
   bash scripts/ecotype_pca_v2/14_run_fixed_smartpca.sh \
@@ -103,20 +129,12 @@ for TRACK in ALL TV; do
   EXPECTED_N=$(( $(wc -l < "$TRACK_DIR/civan.merged.ind") ))
   python3 scripts/ecotype_pca_v2/15_pca_qc.py \
     --evec "$TRACK_DIR/civan.$TRACK.pca.evec" --ind "$TRACK_DIR/civan.merged.ind" \
-    --expected-n "$EXPECTED_N" --out "$TRACK_DIR/civan.$TRACK.pca_qc.tsv"
+    --expected-n "$EXPECTED_N" --projection-label Ancient \
+    --out "$TRACK_DIR/civan.$TRACK.pca_qc.tsv"
 
   python3 scripts/ecotype_pca_v2/16_projection_summary.py \
     --panel C --evec "$TRACK_DIR/civan.$TRACK.pca.evec" \
     --out "$TRACK_DIR/civan.$TRACK.projection_summary.tsv"
-
-  REPORT_ARGS=()
-  for a in "${CALLS_ARGS[@]}"; do
-    SAMPLE="${a%%=*}"
-    REPORT_ARGS+=("$SAMPLE=$TRACK_DIR/calls/$SAMPLE.C.pooled_mixed.$TRACK.call_report.tsv")
-  done
-  python3 scripts/ecotype_pca_v2/22_classify_scientific_projection.py \
-    $(for a in "${REPORT_ARGS[@]}"; do printf -- '--call-report %s ' "$a"; done) \
-    --out "$TRACK_DIR/civan.$TRACK.scientific_projection.tsv"
 
   echo "PASS: track $TRACK complete ($(( ${#CALLS_ARGS[@]} )) sample(s) technically succeeded)"
 done

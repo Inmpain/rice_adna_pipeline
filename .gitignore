@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+
+# Local Claude account/session exports are private and unrelated to this repo.
+users.json
+login_history.json
+conversations.json

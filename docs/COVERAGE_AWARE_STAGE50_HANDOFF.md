@@ -60,17 +60,32 @@ and receipt are created.
 
 ## Required checks before rerunning Stage 50
 
+Use the one-command server entry. It searches the configured
+`results_v2_root` with `find`, accepts only one structurally valid ALL union,
+TV union and 595-sample Civán reference keep-list, checks all 16 BAMs, confirms
+the `94d5366` QC behavior and coverage-aware workflow registration, reruns the
+quick local Stage 40 contract if its receipt is stale, then submits Stage 50.
+It never chooses a newest candidate when more than one valid path exists.
+
 ```bash
-test -s "$CIVAN_UNION_SITES"
-test -s "$CIVAN_UNION_SITES_TV"
-test -s "$CIVAN_REFERENCE_KEEP"
+bash scripts/ecotype_pca_v2/workflow/submit_coverage_aware_stage50.sh
 ```
 
-Then submit through the workflow wrapper:
+After the SLURM job finishes it resolves the new attempt from the controller
+receipt (never from a hard-coded timestamp), verifies and prints ALL/TV
+`pca_qc.tsv`, `scientific_projection.tsv`, and `callability.tsv`, then prints
+workflow status. It does not accept or unlock Stage 60.
 
-```bash
-bash scripts/ecotype_pca_v2/workflow/submit_stage.sh 50 "$STATE"
-```
+If discovery reports multiple candidates, inspect the printed real paths,
+export only the intended path(s), and rerun the same command. Do not substitute
+`/path/to/...` placeholders.
 
 The old `50_civan_fixed_marker_prototype` attempt is retained for audit only;
-it is not the coverage-aware result.
+it is not the coverage-aware result. PCA QC permits an `.ind` sample to be
+absent from smartpca's `.evec` only when its label is `Ancient`; omission of a
+modern sample remains a hard failure. The omitted ancient IDs are recorded in
+`missing_sample_ids`.
+
+Local Claude account/session exports (`users.json`, `login_history.json`, and
+unrelated `conversations.json`) are private and must never be uploaded or
+committed. Root `.gitignore` rules provide an additional guard.

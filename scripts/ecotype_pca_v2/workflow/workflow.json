@@ -129,8 +129,9 @@
       "prerequisites": ["40_fixed_projection_implementation"],
       "resource": "slurm",
       "command": ["bash", "scripts/ecotype_pca_v2/workflow/runners/50_civan_coverage_aware_projection.sh"],
-      "slurm_hint": "Export CIVAN_UNION_SITES, CIVAN_UNION_SITES_TV, CIVAN_REFERENCE_KEEP, and CIVAN_ANCIENT_SAMPLES before submitting.",
+      "slurm_hint": "Use workflow/submit_coverage_aware_stage50.sh to discover, validate, export, submit, and verify the real inputs/results.",
       "tracked_files": [
+        "scripts/ecotype_pca_v2/workflow/submit_coverage_aware_stage50.sh",
         "scripts/ecotype_pca_v2/workflow/runners/50_civan_coverage_aware_projection.sh",
         "scripts/ecotype_pca_v2/19_survey_ancient_coverage.py",
         "scripts/ecotype_pca_v2/20_filter_coverage_sites_to_transversions.py",
@@ -138,6 +139,7 @@
         "scripts/ecotype_pca_v2/22_classify_scientific_projection.py",
         "scripts/ecotype_pca_v2/10_call_ancient_fixed_markers.py",
         "scripts/ecotype_pca_v2/11_build_ancient_callability.py",
+        "scripts/ecotype_pca_v2/tests/test_stage50_coverage_aware_contract.py",
         "docs/ECOTYPE_PCA_V2_SPEC.md"
       ]
     },

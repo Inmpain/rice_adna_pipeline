@@ -93,12 +93,12 @@ marker清单，该样本能call出多少个"——因为union定义就是"至少
 No parameter change was made. No capture/shotgun separation was inferred.
 capture_bait_bed remains null.
 
-**后续（尚未实现）**：真正把这份coverage-aware marker universe接入Stage 50
-时，需要TV和ALL两套结果都输出（不是只选一个），并且把`technical_execution`
-(脚本有没有跑成功)和`scientific_projection`(PASS/SCIENTIFICALLY_UNINFORMATIVE/
-BLOCKED，`callable_n`低于`very_low`时标`SCIENTIFICALLY_UNINFORMATIVE`)
-分开记录，不能用`technical_execution=PASS`掩盖`scientific_projection`的
-真实情况。这一步还没有写代码，是下一个要做的任务。
+**实现更新（2026-08-17）**：coverage-aware marker universe已接入Stage 50，
+ALL/TV分别输出，所有16个样本均要求完成技术calling；`technical_execution`
+与基于`callable_n`的`scientific_projection`分开记录。分级固定为
+`>=200 formal_validation_candidate`、`50–199 exploratory_projection`、
+`<50 descriptive_only`。TV仍为主轨道，ALL仅为damage-sensitive敏感性轨道；
+没有修改MAPQ/BaseQ、MAF或信息量阈值，也没有解锁Stage 60。
 
 相关文件：`scripts/ecotype_pca_v2/19_survey_ancient_coverage.py`、
 `scripts/ecotype_pca_v2/20_filter_coverage_sites_to_transversions.py`、

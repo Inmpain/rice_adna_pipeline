@@ -1102,8 +1102,10 @@ scripts/ecotype_pca_v2/
 16_projection_summary.py
 17_exact_mask_validation.py
 18_validation_metrics.py
-19_sensitivity_summary.py
-20_cross_panel_summary.py
+19_survey_ancient_coverage.py
+20_filter_coverage_sites_to_transversions.py
+21_extract_fixed_snplist.py
+22_classify_scientific_projection.py
 ```
 
 不得用一个大型单体 shell script 同时承担全部逻辑。
