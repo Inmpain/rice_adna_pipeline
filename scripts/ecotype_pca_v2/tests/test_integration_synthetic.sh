@@ -88,28 +88,31 @@ for s in 02_convert_eigenstrat_for_plink.sh 07_make_fixed_markers.sh; do
 done
 
 # ============================================================
-# 2. build a tiny synthetic Panel-A-like EIGENSTRAT panel
-#    12 samples (IND/AUS/ARO/TRJ/TEJ x a few each), 20 SNPs on chr1/chr2,
+# 2. build a synthetic Panel-A-like EIGENSTRAT panel
+#    62 samples (12 each IND/AUS/ARO/TRJ/TEJ plus ADM/Ancient), 20 SNPs,
 #    mix of TV and transition pairs, all biallelic ACGT, unique IDs/pos.
+#    PLINK2 >=2.0 refuses LD estimation with fewer than 50 samples unless
+#    --bad-ld is supplied.  Keep 60 axis builders instead of weakening the
+#    production command with that unsafe override.
 # ============================================================
 PANEL_DIR="$TMP/panel_synth"
 mkdir -p "$PANEL_DIR"
 PREFIX="synthA"
 
-cat > "$PANEL_DIR/${PREFIX}.ind" <<EOF
-s01	U	IND
-s02	U	IND
-s03	U	AUS
-s04	U	AUS
-s05	U	ARO
-s06	U	ARO
-s07	U	TRJ
-s08	U	TRJ
-s09	U	TEJ
-s10	U	TEJ
-s11	U	ADM
-s12	U	Ancient
-EOF
+python3 - "$PANEL_DIR/${PREFIX}.ind" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+sample_index = 1
+with open(path, "w") as fh:
+    for label in ("IND", "AUS", "ARO", "TRJ", "TEJ"):
+        for _ in range(12):
+            fh.write(f"s{sample_index:03d}\tU\t{label}\n")
+            sample_index += 1
+    fh.write(f"s{sample_index:03d}\tU\tADM\n")
+    sample_index += 1
+    fh.write(f"s{sample_index:03d}\tU\tAncient\n")
+PYEOF
 cp "$PANEL_DIR/${PREFIX}.ind" "$PANEL_DIR/${PREFIX}.filtered.ind"
 
 # 20 SNPs: alternate TV (A/C) and transition (A/G) alleles, unique pos, chr1+chr2
@@ -127,7 +130,7 @@ with open(path, "w") as fh:
         pos += 1000
 PYEOF
 
-# genotypes: 20 SNPs x 12 samples, EIGENSTRAT text (rows=SNPs, cols=samples),
+# genotypes: 20 SNPs x 62 samples, EIGENSTRAT text (rows=SNPs, cols=samples),
 # random-ish but deterministic 0/1/2, no missing (9) so geno/MAF filters have
 # something nonzero to work with.
 python3 - "$PANEL_DIR/${PREFIX}.eigenstratgeno" <<'PYEOF'
@@ -136,7 +139,7 @@ path = sys.argv[1]
 rng = random.Random(1)
 with open(path, "w") as fh:
     for _ in range(20):
-        fh.write("".join(str(rng.choice([0,1,2])) for _ in range(12)) + "\n")
+        fh.write("".join(str(rng.choice([0,1,2])) for _ in range(62)) + "\n")
 PYEOF
 cp "$PANEL_DIR/${PREFIX}.eigenstratgeno" "$PANEL_DIR/${PREFIX}.filtered.eigenstratgeno"
 
@@ -158,7 +161,7 @@ expect_exit "06_panel_A_all_labels_present" 0 python3 "$SCRIPTS_DIR/06_build_ref
   --config "$CONFIG" --panel A --label synthA \
   --ind-file "$PANEL_DIR/${PREFIX}.filtered.ind" --fam-file "${BFILE}.fam" \
   --out-dir "$REF_OUT"
-expect_line_count "06_keep_list_has_10_reference_samples" "$REF_OUT/synthA.reference_samples.keep" 10
+expect_line_count "06_keep_list_has_60_reference_samples" "$REF_OUT/synthA.reference_samples.keep" 60
 
 # 06: missing label (drop TEJ from a copy of the .ind) -> must hard-fail (item 11)
 MISSING_LABEL_IND="$TMP/synthA_missing_tej.ind"
@@ -170,7 +173,7 @@ expect_exit "06_panel_A_missing_label_hard_fails" 3 python3 "$SCRIPTS_DIR/06_bui
 
 # 06: duplicate sample ID -> must hard-fail (item 11)
 DUP_IND="$TMP/synthA_dup.ind"
-{ cat "$PANEL_DIR/${PREFIX}.filtered.ind"; echo -e "s01\tU\tAUS"; } > "$DUP_IND"
+{ cat "$PANEL_DIR/${PREFIX}.filtered.ind"; echo -e "s001\tU\tAUS"; } > "$DUP_IND"
 expect_exit "06_duplicate_sample_id_hard_fails" 3 python3 "$SCRIPTS_DIR/06_build_reference_sample_set.py" \
   --config "$CONFIG" --panel A --label synthA_dup \
   --ind-file "$DUP_IND" --fam-file "${BFILE}.fam" \

@@ -35,7 +35,7 @@ validation and manual gates remain separate stages.
 | Stage | Purpose | Initial availability |
 |---|---|---|
 | 00 | Repository/config/spec/pure-test self-check | open |
-| 10 | Real server preflight, synthetic integration, BAM/panel evidence | open |
+| 10 | Real server preflight, synthetic integration, BAM/panel evidence in SLURM | open after 00 |
 | 20 | Full 2.365M-marker Civán modern-only PCA in SLURM | open after 00/10 |
 | 30 | Human review of PC1–2, PC3–4, log and summary | manual gate |
 | 40 | Implement/test v2 scripts 09–18 | fail-closed blocker |
@@ -67,23 +67,40 @@ CTL="$SRC/scripts/ecotype_pca_v2/workflow/ecotype_pca_workflow.py"
 cd "$SRC"
 ```
 
-Inspect, then run the current stage:
+Inspect, then run stage 00 on the login node:
 
 ```bash
 python3 "$CTL" --state-dir "$STATE" status
 python3 "$CTL" --state-dir "$STATE" next
-python3 "$CTL" --state-dir "$STATE" run
+python3 "$CTL" --state-dir "$STATE" run 00_repo_selfcheck
 ```
 
-Run `run` again only after the previous receipt exists. Stage 10 is a
-read-only server preflight. It permits capture to remain explicitly BLOCKED
-but requires the shotgun inputs, labels, tools, synthetic integration and
-pseudo-haploid regression test to pass.
+Do not run the next stage directly on the login node. Stage 10 reads the 29M
+panel metadata and scans BAM flags, so both the controller and runner require a
+SLURM allocation. It permits capture to remain explicitly BLOCKED but requires
+the shotgun inputs, labels, tools, synthetic integration and pseudo-haploid
+regression test to pass.
 
-## Stage 20 through SLURM
+## Stages 10 and 20 through SLURM
 
-The controller refuses stage 20 on a login node. From the immutable source
-directory, submit the same controller inside an allocation:
+Run the preflight with bounded CPU and memory:
+
+```bash
+sbatch --wait -p comp --exclude=node05,node06 \
+  -c 2 --mem 8G -t 24:00:00 \
+  -J pca2_preflight \
+  -o "$STATE/10_server_preflight.%j.slurm.log" \
+  --wrap="cd '$SRC' && python3 '$CTL' --state-dir '$STATE' run 10_server_preflight"
+```
+
+The first real attempt on commit `33ae004` correctly failed before BAM scanning:
+PLINK2 2.0 rejected LD estimation on the old 10-axis-builder synthetic fixture.
+The corrected fixture has 60 axis builders; production commands do not use
+PLINK2's unsafe `--bad-ld` override. BAM paired/proper-pair evidence now uses
+one `samtools flagstat` scan per BAM instead of three full scans.
+
+After stage 10 has a valid receipt, submit stage 20 from the immutable source
+directory:
 
 ```bash
 sbatch --wait -p comp --exclude=node05,node06 \

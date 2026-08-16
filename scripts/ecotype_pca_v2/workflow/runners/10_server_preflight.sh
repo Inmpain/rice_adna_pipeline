@@ -2,9 +2,12 @@
 # Real-server, read-only input/tool audit plus synthetic integration tests.
 set -euo pipefail
 
+: "${SLURM_JOB_ID:?stage 10 scans large panel files and BAM flags; run it through SLURM, not on a login node}"
 : "${RICE_PCA_REPO_ROOT:?workflow controller must set RICE_PCA_REPO_ROOT}"
 : "${RICE_PCA_CONFIG:?workflow controller must set RICE_PCA_CONFIG}"
 : "${RICE_PCA_ATTEMPT_DIR:?workflow controller must set RICE_PCA_ATTEMPT_DIR}"
+
+export RICE_PCA_PLINK_THREADS="${SLURM_CPUS_PER_TASK:-1}"
 
 cd "$RICE_PCA_REPO_ROOT"
 V2="scripts/ecotype_pca_v2"

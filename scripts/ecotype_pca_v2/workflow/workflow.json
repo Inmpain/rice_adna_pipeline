@@ -38,6 +38,7 @@
         "scripts/ecotype_pca_v2/tests/test_04_ld_chunking.py",
         "scripts/ecotype_pca_v2/workflow/ecotype_pca_workflow.py",
         "scripts/ecotype_pca_v2/workflow/tests/test_workflow_controller.py",
+        "scripts/ecotype_pca_v2/workflow/tests/test_collect_server_evidence.py",
         "scripts/ecotype_pca_v2/workflow/runners/00_repo_selfcheck.sh"
       ]
     },
@@ -45,9 +46,10 @@
       "id": "10_server_preflight",
       "title": "Audit real server paths/tools/labels, run synthetic integration tests, and collect blocker evidence",
       "kind": "command",
-      "resource": "login",
+      "resource": "slurm",
       "prerequisites": ["00_repo_selfcheck"],
       "command": ["bash", "scripts/ecotype_pca_v2/workflow/runners/10_server_preflight.sh"],
+      "slurm_hint": "This stage scans 29M panel metadata and BAM flags. Use the documented stage-10 sbatch --wait command.",
       "tracked_files": [
         "scripts/ecotype_pca_v2/00_validate_inputs.py",
         "scripts/ecotype_pca_v2/01_make_panel_manifest.py",

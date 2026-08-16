@@ -325,7 +325,7 @@ scripts/ecotype_pca_v2/
 └── workflow/
     ├── workflow.json                 # 唯一阶段顺序/门禁定义
     ├── ecotype_pca_workflow.py       # 状态机控制器
-    ├── collect_server_evidence.py    # 720/718与BAM paired flags只读证据
+    ├── collect_server_evidence.py    # 720/718与BAM单次flagstat只读证据
     ├── runners/                      # 当前已开放阶段的精确runner
     └── tests/                        # 顺序、digest、stale receipt回归测试
 
@@ -347,3 +347,4 @@ docs/ECOTYPE_PCA_V2_SPEC.md           # 参数/统计细节说明（与功能说
 
 源码版本可以更换，`workflow_state`应复用。控制器会根据config、阶段定义、
 tracked scripts和上游receipt哈希判断旧结果仍有效还是`STALE`，不得手改receipt。
+stage 00可在login节点运行；stage 10/20必须由SLURM执行。

@@ -9,10 +9,9 @@ BAM.  It never reads or copies genotype matrices into its output bundle.
 import argparse
 import csv
 import json
+import re
 import subprocess
 from pathlib import Path
-
-import yaml
 
 
 def read_ind(path):
@@ -28,17 +27,42 @@ def read_ind(path):
     return rows
 
 
-def samtools_count(bam, extra_args):
+def parse_flagstat(text):
+    """Return total/paired/proper-pair counts from one samtools flagstat pass."""
+    counts = {}
+    patterns = {
+        "records": "in total",
+        "paired_flag": "paired in sequencing",
+        "proper_pair_flag": "properly paired",
+    }
+    for line in text.splitlines():
+        match = re.match(r"^(\d+) \+ (\d+) (.+)$", line.strip())
+        if not match:
+            continue
+        combined = int(match.group(1)) + int(match.group(2))
+        label = match.group(3)
+        for key, prefix in patterns.items():
+            if label.startswith(prefix):
+                counts[key] = combined
+    missing = sorted(set(patterns) - set(counts))
+    if missing:
+        raise ValueError(f"samtools flagstat output missing fields: {missing}")
+    return counts
+
+
+def samtools_flagstat(bam):
     proc = subprocess.run(
-        ["samtools", "view", "-c", *extra_args, str(bam)],
+        ["samtools", "flagstat", str(bam)],
         capture_output=True, text=True,
     )
     if proc.returncode != 0:
         raise RuntimeError(f"samtools failed for {bam}: {proc.stderr.strip()}")
-    return int(proc.stdout.strip())
+    return parse_flagstat(proc.stdout)
 
 
 def main():
+    import yaml
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
     parser.add_argument("--out-dir", required=True)
@@ -84,12 +108,9 @@ def main():
 
     bam_dir = Path(cfg["inputs"]["ancient_bam_dir"])
     for bam in sorted(bam_dir.glob("*.bam")):
-        total = samtools_count(bam, [])
-        paired = samtools_count(bam, ["-f", "1"])
-        proper_pair = samtools_count(bam, ["-f", "2"])
+        counts = samtools_flagstat(bam)
         evidence["ancient_bams"].append({
-            "bam": str(bam), "records": total,
-            "paired_flag": paired, "proper_pair_flag": proper_pair,
+            "bam": str(bam), **counts,
         })
 
     with (out_dir / "server_evidence.json").open("w") as handle:

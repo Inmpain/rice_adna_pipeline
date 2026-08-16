@@ -10,12 +10,16 @@ Contents:
   `run`, `accept`, `debug-bundle`).
 - `runners/`: exact commands for stages currently implemented.
 - `collect_server_evidence.py`: read-only raw/filtered sample diff and BAM pair
-  flag census used to resolve the 720/718 and overlap questions.
+  flag census used to resolve the 720/718 and overlap questions; one
+  `samtools flagstat` pass per BAM.
 - `tests/`: controller ordering/digest regression tests.
 
 Attempt products and receipts do not belong in the repository. They live in
 the user-supplied server `--state-dir`, normally
 `/home/scratch/yinmt202607/gene/results/ecotype_pca_v2/workflow_state`.
+
+Stage 00 may run on a login node. Stages 10 and 20 are guarded SLURM stages;
+the controller and stage-10 runner both refuse login-node execution.
 
 See `docs/ECOTYPE_PCA_V2_WORKFLOW.md` for complete operator commands and
 `docs/ECOTYPE_PCA_V2_SPEC.md` for statistical details.

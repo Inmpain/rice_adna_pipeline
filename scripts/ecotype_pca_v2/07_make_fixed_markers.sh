@@ -57,6 +57,16 @@
 
 set -euo pipefail
 
+# PLINK2 otherwise auto-detects all host CPUs (80 on the first server test),
+# ignoring the small workflow allocation. Threads affect resources, not the
+# frozen statistical design. Default to one and allow the SLURM runner to
+# supply its allocated CPU count through this infrastructure-only variable.
+PLINK_THREADS="${RICE_PCA_PLINK_THREADS:-1}"
+[[ "$PLINK_THREADS" =~ ^[1-9][0-9]*$ ]] || {
+  echo "FATAL: RICE_PCA_PLINK_THREADS must be a positive integer" >&2
+  exit 1
+}
+
 print_usage() {
   cat <<EOF
 Usage: $0 --config CFG --panel {A|B|C} --sensitivity {primary|S1|S2|S3|S4} \\
@@ -228,12 +238,13 @@ fi
 
 # --- 2. reference samples, site missingness ONLY (item 9: separate step from MAF) ---
 plink2 --bfile "$BFILE" --keep "$KEEP" --extract "$STEP1_EXTRACT" \
-  --geno "$GENO" --make-bed --out "$GENO_ONLY_OUT"
+  --geno "$GENO" --threads "$PLINK_THREADS" --make-bed --out "$GENO_ONLY_OUT"
 AFTER_SITE_MISSINGNESS=$(wc -l < "${GENO_ONLY_OUT}.bim")
 echo "after_site_missingness: $AFTER_SITE_MISSINGNESS"
 
 # --- 3. MAF, on top of the site-missingness-filtered set (item 9: separate step) ---
-plink2 --bfile "$GENO_ONLY_OUT" --maf "$MAF" --make-bed --out "$GENO_MAF_OUT"
+plink2 --bfile "$GENO_ONLY_OUT" --maf "$MAF" --threads "$PLINK_THREADS" \
+  --make-bed --out "$GENO_MAF_OUT"
 AFTER_MAF=$(wc -l < "${GENO_MAF_OUT}.bim")
 echo "after_MAF: $AFTER_MAF"
 
@@ -255,9 +266,9 @@ fi
 # --- 4. LD prune -- PLINK2 native 2-arg kb syntax, per spec section 5 ---
 # spec explicitly forbids the PLINK1.9-style 3-arg "100kb 10 0.2" form.
 plink2 --bfile "$GENO_MAF_OUT" --indep-pairwise "${LD_WINDOW_KB}kb" "$LD_R2" \
-  --out "$OUT_DIR/${RUN_ID}.ld"
+  --threads "$PLINK_THREADS" --out "$OUT_DIR/${RUN_ID}.ld"
 plink2 --bfile "$GENO_MAF_OUT" --extract "$OUT_DIR/${RUN_ID}.ld.prune.in" \
-  --make-bed --out "$OUT_DIR/${RUN_ID}.pruned"
+  --threads "$PLINK_THREADS" --make-bed --out "$OUT_DIR/${RUN_ID}.pruned"
 AFTER_LD=$(wc -l < "$OUT_DIR/${RUN_ID}.pruned.bim")
 echo "after_LD_or_thinning: $AFTER_LD"
 

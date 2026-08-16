@@ -24,6 +24,7 @@ python3 scripts/ecotype_pca_v2/tests/test_06_and_01_logic.py
 python3 scripts/ecotype_pca_v2/tests/test_08_streaming.py
 python3 scripts/ecotype_pca_v2/tests/test_04_ld_chunking.py
 python3 scripts/ecotype_pca_v2/workflow/tests/test_workflow_controller.py
+python3 scripts/ecotype_pca_v2/workflow/tests/test_collect_server_evidence.py
 
 python3 - "$RICE_PCA_CONFIG" <<'PY'
 import sys

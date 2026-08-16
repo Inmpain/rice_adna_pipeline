@@ -29,9 +29,13 @@ their branch handoff documents rather than being duplicated here.
 
 ## Current next stage
 
-Run the ordered workflow stages 00 and 10 on the server, return the generated
-debug bundle if either fails, then run stage 20 (full modern Civán sanity PCA)
-inside SLURM. Stage 30 requires human review of PC1–2 and PC3–4.
+Run stage 00 on the login node, then stage 10 through SLURM; stage 10 scans
+large panel metadata and one `samtools flagstat` pass per BAM. The first
+server attempt on `33ae004` exposed a PLINK2 synthetic-fixture incompatibility
+(10 axis builders, while current PLINK2 requires at least 50 for LD); the
+fixture is now 60 and PLINK threads are allocation-bounded. After stage 10,
+run stage 20 (full modern Civán sanity PCA) inside SLURM. Stage 30 requires
+human review of PC1–2 and PC3–4.
 
 ## Fail-closed blockers
 

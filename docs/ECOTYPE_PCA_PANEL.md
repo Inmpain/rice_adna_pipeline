@@ -20,6 +20,16 @@ attempt并生成debug tarball。脚本更新后旧receipt会显示`STALE`并重�
 避免聊天记忆或旧命令把阶段跳过去。当前只开放00/10/20，30是人工门禁，40以后
 因09–20未实现而fail-closed。
 
+服务器首次stage 10（commit `33ae004`）在新版PLINK2合成LD测试处按预期
+fail-closed：旧fixture只有10个axis builders，而该版本要求至少50个样本。
+修复采用60个合成axis builders，不向生产命令加入`--bad-ld`。同时stage 10
+改为SLURM-only、PLINK线程绑定allocation，BAM证据从每个BAM三次完整扫描改为
+一次`samtools flagstat`；不得再从`login01`直接运行stage 10。
+该次只读检查在失败前确认：Panel A raw/filtered为3024/3000，Panel B为
+720/718，Civán为1056/1055；SHOTGUN_READY通过，capture bait BED仍缺失。
+由于合成测试先失败，BAM paired/proper-pair census尚未执行，不能据此决定
+`ignore_overlaps`，也不能仅凭群体标签替Panel B选择720或718。
+
 本次同时修正三项已确认问题：
 
 1. Civáň config标签改为真实的`japonica_(temperate)`/

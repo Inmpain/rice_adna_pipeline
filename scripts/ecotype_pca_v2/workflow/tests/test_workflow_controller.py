@@ -3,6 +3,7 @@
 
 import importlib.util
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -67,6 +68,19 @@ def main():
     plan = MOD.load_plan(WORKFLOW_DIR / "workflow.json")
     config_source = MOD.DEFAULT_CONFIG
     check("default_plan_valid", len(plan["stages"]) == 9)
+    check("server_preflight_resource_is_slurm", plan["stages"][1]["resource"] == "slurm")
+
+    saved_slurm_job_id = os.environ.pop("SLURM_JOB_ID", None)
+    try:
+        try:
+            MOD.run_stage(None, plan, plan["stages"][1])
+        except ValueError as exc:
+            check("server_preflight_refuses_login_node", "requires a SLURM allocation" in str(exc))
+        else:
+            raise AssertionError("server_preflight_refuses_login_node")
+    finally:
+        if saved_slurm_job_id is not None:
+            os.environ["SLURM_JOB_ID"] = saved_slurm_job_id
 
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
