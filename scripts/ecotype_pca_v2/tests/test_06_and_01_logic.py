@@ -39,7 +39,7 @@ def make_config():
         "panel_A_3k": {"axis_labels": ["IND", "AUS", "ARO", "TRJ", "TEJ"],
                         "project_labels": ["ADM"]},
         "panel_C_civan": {"axis_labels": ["indica", "aus", "aromatic", "japonica",
-                                            "japonica_temperate", "japonica_tropical"],
+                                            "japonica_(temperate)", "japonica_(tropical)"],
                             "expected_axis_builder_n": 6},
     }
 
@@ -82,7 +82,7 @@ def test_panel_A_all_five_present_ok():
 def test_panel_C_count_mismatch_hard_fails():
     cfg = make_config()  # expected_axis_builder_n=6 for this synthetic config
     r = rows(("indica", 1), ("aus", 1), ("aromatic", 1), ("japonica", 1),
-              ("japonica_temperate", 1), ("japonica_tropical", 2))  # total 7, not 6
+              ("japonica_(temperate)", 1), ("japonica_(tropical)", 2))  # total 7, not 6
     try:
         script06.build_panel_C(cfg, r, logger)
         assert False, "expected SystemExit for count mismatch (7 != 6)"
@@ -93,19 +93,18 @@ def test_panel_C_count_mismatch_hard_fails():
 def test_panel_C_exact_count_ok():
     cfg = make_config()
     r = rows(("indica", 1), ("aus", 1), ("aromatic", 1), ("japonica", 1),
-              ("japonica_temperate", 1), ("japonica_tropical", 1))  # total 6 == expected
+              ("japonica_(temperate)", 1), ("japonica_(tropical)", 1))  # total 6 == expected
     keep, other = script06.build_panel_C(cfg, r, logger)
     assert len(keep) == 6
 
 
 def test_panel_C_label_spelling_mismatch_hard_fails():
-    """Directly exercises the real Civan-label-parentheses risk flagged in the
-    Batch 1 report: if the .ind file actually has 'japonica_(temperate)' but
-    config says 'japonica_temperate', that label has zero matches -- must
-    hard-fail, never silently proceed with 5 of 6 groups."""
+    """The production config now uses the verified parenthesized labels.  A
+    normalized/no-parentheses .ind must hard-fail rather than silently proceed
+    with only 5 of the 6 axis-builder groups."""
     cfg = make_config()
     r = rows(("indica", 1), ("aus", 1), ("aromatic", 1), ("japonica", 1),
-              ("japonica_(temperate)", 1), ("japonica_(tropical)", 1))  # parens, doesn't match config
+              ("japonica_temperate", 1), ("japonica_tropical", 1))
     try:
         script06.build_panel_C(cfg, r, logger)
         assert False, "expected SystemExit for label spelling mismatch"
@@ -174,7 +173,7 @@ if __name__ == "__main__":
     run("panel_A_all_five_present_ok", test_panel_A_all_five_present_ok)
     run("panel_C_count_mismatch_hard_fails", test_panel_C_count_mismatch_hard_fails)
     run("panel_C_exact_count_ok", test_panel_C_exact_count_ok)
-    run("panel_C_label_spelling_mismatch_hard_fails (the real Civan parens risk)",
+    run("panel_C_normalized_label_mismatch_hard_fails",
         test_panel_C_label_spelling_mismatch_hard_fails)
     run("01_duplicate_sample_id_fails", test_01_duplicate_sample_id_fails)
     run("01_duplicate_snp_id_fails", test_01_duplicate_snp_id_fails)

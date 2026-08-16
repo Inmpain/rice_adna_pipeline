@@ -4,7 +4,7 @@
 > 什么场景下需要用它**。新接手的人应该先读这份文档，再去看
 > `PROJECT_STATUS.md`(项目当前进度)和`decisions_log.md`(关键决策原因)。
 
-最后更新: 2026-08-05
+最后更新: 2026-08-16
 
 ---
 
@@ -284,7 +284,7 @@ git show <commit_hash>:PROJECT_STATUS.md > /tmp/old_version.md
 │       ├── panel_overlap/            # summarize_panel_overlap.py产出(位点重叠+QC统计)
 │       ├── bam_irgsp/                # besthit_oryza→IRGSP全属比对BAM，mapping_summary.tsv
 │       ├── loo_smoke/                # Civáň leave-one-out smoke test完整产出(唯一真正跑过的PCA)
-│       └── pca_runs/                 # 16样本×3panel批量铺开的目标目录(已建，还没有产出)
+│       └── pca_runs/                 # v1的16×3 first-look已产出；无MAF/LD、每样本独立坐标，不是final
 ```
 
 **Git仓库(`codex/ecotype-pca-panel`分支)新增内容**：
@@ -313,3 +313,37 @@ docs/
 
 对应的完整"为什么/怎么用"说明见`docs/ECOTYPE_PCA_PANEL.md`📍段落，不在
 本文档重复。
+
+### 9.1 PCA v2顺序执行与debug状态目录（2026-08-16新增）
+
+**仓库内权威路径**：
+
+```text
+scripts/ecotype_pca_v2/
+├── bootstrap_ecotype_pca_v2.sh       # 按40位commit下载不可变仓库快照
+├── config/ecotype_pca_v2.yaml        # 全阶段统一参数源；变更会使receipt失效
+└── workflow/
+    ├── workflow.json                 # 唯一阶段顺序/门禁定义
+    ├── ecotype_pca_workflow.py       # 状态机控制器
+    ├── collect_server_evidence.py    # 720/718与BAM paired flags只读证据
+    ├── runners/                      # 当前已开放阶段的精确runner
+    └── tests/                        # 顺序、digest、stale receipt回归测试
+
+docs/ECOTYPE_PCA_V2_WORKFLOW.md       # 功能/运维说明
+docs/ECOTYPE_PCA_V2_SPEC.md           # 参数/统计细节说明（与功能说明分层）
+```
+
+**建议服务器路径**：
+
+```text
+/home/scratch/yinmt202607/gene/workflow_sources/
+└── rice_adna_pipeline-<FULL_COMMIT>/ # 每次debug修复安装一个新commit，不覆盖旧版
+
+/home/scratch/yinmt202607/gene/results/ecotype_pca_v2/workflow_state/
+├── receipts/                         # 成功阶段的内容寻址receipt
+├── attempts/<stage>/<timestamp>/     # 每次独立尝试；失败也保留
+└── debug_bundles/                    # 发回本地debug的小型tar.gz
+```
+
+源码版本可以更换，`workflow_state`应复用。控制器会根据config、阶段定义、
+tracked scripts和上游receipt哈希判断旧结果仍有效还是`STALE`，不得手改receipt。

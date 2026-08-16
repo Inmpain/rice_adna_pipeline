@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "engine_contract_version": 1,
+  "workflow_id": "rice_ecotype_pca_v2_ordered_20260816",
+  "global_policy": {
+    "execution_model": "strictly_linear_fail_closed",
+    "ancient_never_builds_axes": true,
+    "parameters_only_from_versioned_config": true,
+    "no_overwrite_between_attempts": true,
+    "manual_scientific_acceptance_required": true,
+    "server_execution_by_user_only": true,
+    "tv_all_shared_transversion_draw_must_match": true,
+    "eigenstrat_encoding": "REF=2;ALT=0;MISSING=9"
+  },
+  "stages": [
+    {
+      "id": "00_repo_selfcheck",
+      "title": "Validate the downloaded workflow, frozen parameters, known bug fixes, and pure tests",
+      "kind": "command",
+      "resource": "local",
+      "prerequisites": [],
+      "command": ["bash", "scripts/ecotype_pca_v2/workflow/runners/00_repo_selfcheck.sh"],
+      "tracked_files": [
+        "docs/ECOTYPE_PCA_V2_SPEC.md",
+        "scripts/ecotype_pca/pseudo_haploid_call.py",
+        "scripts/ecotype_pca_v2/01_make_panel_manifest.py",
+        "scripts/ecotype_pca_v2/02_convert_eigenstrat_for_plink.sh",
+        "scripts/ecotype_pca_v2/03_audit_panel.py",
+        "scripts/ecotype_pca_v2/04_audit_720_ld.py",
+        "scripts/ecotype_pca_v2/06_build_reference_sample_set.py",
+        "scripts/ecotype_pca_v2/07_make_fixed_markers.sh",
+        "scripts/ecotype_pca_v2/08_make_5kb_thinned_markers.py",
+        "scripts/ecotype_pca_v2/lib_ecotype_v2.py",
+        "scripts/ecotype_pca_v2/bootstrap_ecotype_pca_v2.sh",
+        "scripts/ecotype_pca_v2/tests/test_lib_ecotype_v2.py",
+        "scripts/ecotype_pca_v2/tests/test_06_and_01_logic.py",
+        "scripts/ecotype_pca_v2/tests/test_08_streaming.py",
+        "scripts/ecotype_pca_v2/tests/test_04_ld_chunking.py",
+        "scripts/ecotype_pca_v2/workflow/ecotype_pca_workflow.py",
+        "scripts/ecotype_pca_v2/workflow/tests/test_workflow_controller.py",
+        "scripts/ecotype_pca_v2/workflow/runners/00_repo_selfcheck.sh"
+      ]
+    },
+    {
+      "id": "10_server_preflight",
+      "title": "Audit real server paths/tools/labels, run synthetic integration tests, and collect blocker evidence",
+      "kind": "command",
+      "resource": "login",
+      "prerequisites": ["00_repo_selfcheck"],
+      "command": ["bash", "scripts/ecotype_pca_v2/workflow/runners/10_server_preflight.sh"],
+      "tracked_files": [
+        "scripts/ecotype_pca_v2/00_validate_inputs.py",
+        "scripts/ecotype_pca_v2/01_make_panel_manifest.py",
+        "scripts/ecotype_pca_v2/02_convert_eigenstrat_for_plink.sh",
+        "scripts/ecotype_pca_v2/03_audit_panel.py",
+        "scripts/ecotype_pca_v2/04_audit_720_ld.py",
+        "scripts/ecotype_pca_v2/05_intersect_panel_baits.py",
+        "scripts/ecotype_pca_v2/06_build_reference_sample_set.py",
+        "scripts/ecotype_pca_v2/07_make_fixed_markers.sh",
+        "scripts/ecotype_pca_v2/08_make_5kb_thinned_markers.py",
+        "scripts/ecotype_pca_v2/lib_ecotype_v2.py",
+        "scripts/ecotype_pca_v2/tests/test_integration_synthetic.sh",
+        "scripts/ecotype_pca/tests/test_pseudo_haploid_call.py",
+        "scripts/ecotype_pca_v2/workflow/collect_server_evidence.py",
+        "scripts/ecotype_pca_v2/workflow/runners/10_server_preflight.sh"
+      ]
+    },
+    {
+      "id": "20_civan_full_modern_sanity",
+      "title": "Run full 2.365M-marker Civán modern-only smartpca with exactly 595 domesticated axis builders",
+      "kind": "command",
+      "resource": "slurm",
+      "prerequisites": ["10_server_preflight"],
+      "command": ["bash", "scripts/ecotype_pca_v2/workflow/runners/20_civan_full_modern_sanity.sh"],
+      "slurm_hint": "Use the documented sbatch --wait command; the receipt is written only after smartpca and both plots finish.",
+      "tracked_files": [
+        "scripts/ecotype_pca/plot_pca_projection.py",
+        "scripts/ecotype_pca_v2/workflow/runners/20_civan_full_modern_sanity.sh"
+      ]
+    },
+    {
+      "id": "30_civan_full_modern_review",
+      "title": "Human review: decide whether full Civán PC1-2 and PC3-4 reproduce credible modern structure",
+      "kind": "manual_gate",
+      "prerequisites": ["20_civan_full_modern_sanity"],
+      "required_evidence": [
+        "full_civan.PC1_PC2.png",
+        "full_civan.PC3_PC4.png",
+        "full_civan.smartpca.log",
+        "full_civan.summary.tsv"
+      ],
+      "tracked_files": [
+        "docs/ECOTYPE_PCA_PANEL_QC_DESIGN.md",
+        "docs/ECOTYPE_PCA_V2_SPEC.md"
+      ]
+    },
+    {
+      "id": "40_fixed_projection_implementation",
+      "title": "Implement and validate v2 scripts 09-18 before any ancient fixed-marker prototype",
+      "kind": "blocked",
+      "prerequisites": ["30_civan_full_modern_review"],
+      "blockers": [
+        "scripts 09_export_fixed_reference_eigenstrat.py through 18_validation_metrics.py do not exist yet",
+        "implementation must be reviewed against the accepted Civán full-modern evidence before this stage is opened"
+      ],
+      "tracked_files": [
+        "docs/ECOTYPE_PCA_V2_SPEC.md"
+      ]
+    },
+    {
+      "id": "50_civan_fixed_marker_prototype",
+      "title": "Run LV7008416379 Civán fixed-marker TV/ALL prototype and exact-mask validation",
+      "kind": "blocked",
+      "prerequisites": ["40_fixed_projection_implementation"],
+      "blockers": [
+        "requires stage 40 implementation and tests",
+        "capture route remains blocked until the real bait BED is supplied; shotgun prototype may proceed first"
+      ],
+      "tracked_files": ["docs/ECOTYPE_PCA_V2_SPEC.md"]
+    },
+    {
+      "id": "60_panel_a_3k_prototype",
+      "title": "Run Panel A fixed reference with MAF 0.01, then LV7008416379 projection and validation",
+      "kind": "blocked",
+      "prerequisites": ["50_civan_fixed_marker_prototype"],
+      "blockers": [
+        "requires accepted Civán prototype",
+        "requires Panel A exact-mask encoding/orientation validation"
+      ],
+      "tracked_files": ["docs/ECOTYPE_PCA_V2_SPEC.md"]
+    },
+    {
+      "id": "70_panel_b_720_decision_and_audit",
+      "title": "Resolve raw 720 versus filtered 718 on technical evidence, then run corrected LD and marker-route audits",
+      "kind": "blocked",
+      "prerequisites": ["60_panel_a_3k_prototype"],
+      "blockers": [
+        "the two unmatched Panel B samples must be classified as technically valid or all-genotype-missing before choosing 720 or 718",
+        "the corrected chunked LD implementation needs a real-server smoke result",
+        "Panel B label interpretation remains limited to wild/cultivated-related structure"
+      ],
+      "tracked_files": [
+        "docs/ECOTYPE_PCA_V2_SPEC.md",
+        "scripts/ecotype_pca_v2/04_audit_720_ld.py"
+      ]
+    },
+    {
+      "id": "80_all_ancients_production",
+      "title": "Project all ancient samples only after all three fixed reference frameworks and validations pass",
+      "kind": "blocked",
+      "prerequisites": ["70_panel_b_720_decision_and_audit"],
+      "blockers": [
+        "requires scripts 19_sensitivity_summary.py and 20_cross_panel_summary.py",
+        "requires accepted Civán, Panel A, and Panel B frameworks",
+        "whole-genus versus taxonomic-tier BAM input must be recorded and audited before production"
+      ],
+      "tracked_files": ["docs/ECOTYPE_PCA_V2_SPEC.md"]
+    }
+  ]
+}

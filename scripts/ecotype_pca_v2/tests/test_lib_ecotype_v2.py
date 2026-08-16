@@ -39,7 +39,7 @@ def make_config():
         },
         "panel_C_civan": {
             "axis_labels": ["indica", "aus", "aromatic", "japonica",
-                             "japonica_temperate", "japonica_tropical"],
+                             "japonica_(temperate)", "japonica_(tropical)"],
             "expected_axis_builder_n": 595,
             "geno": 0.05, "maf": 0.01, "ld_window_kb": 100, "ld_r2": 0.20,
         },

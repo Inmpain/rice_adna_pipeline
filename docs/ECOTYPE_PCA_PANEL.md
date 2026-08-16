@@ -7,6 +7,33 @@
 
 ---
 
+## 📍 2026-08-16：顺序执行状态机（当前唯一v2执行入口）
+
+新增`scripts/ecotype_pca_v2/workflow/`与
+`docs/ECOTYPE_PCA_V2_WORKFLOW.md`。从本节起，不再把下面历史runbook中的散装
+命令当作v2执行入口。状态机严格锁定顺序：repo self-check → server preflight
+→ Civáň full-modern sanity → 人工看图验收 → 09–18实现门禁 → Civáň prototype
+→ 3K MAF=0.01 prototype → 720/718决策与审计 → 全ancient production。
+
+每阶段receipt绑定config、tracked scripts与上游receipt哈希；失败自动保存独立
+attempt并生成debug tarball。脚本更新后旧receipt会显示`STALE`并重新锁住下游，
+避免聊天记忆或旧命令把阶段跳过去。当前只开放00/10/20，30是人工门禁，40以后
+因09–20未实现而fail-closed。
+
+本次同时修正三项已确认问题：
+
+1. Civáň config标签改为真实的`japonica_(temperate)`/
+   `japonica_(tropical)`；
+2. v2规范纠正为EIGENSTRAT `REF=2/ALT=0`，run seed不含track，共享TV位点
+   使用相同site draw；
+3. `04_audit_720_ld.py`改为block末端forward halo，修复跨block SNP pair漏算，
+   并新增纯Python边界回归测试。
+
+服务器下载、SLURM和反馈debug命令只看
+`docs/ECOTYPE_PCA_V2_WORKFLOW.md`。本地代理仍不直接登录或操作计算服务器。
+
+---
+
 ## 📍📍 2026-08-15 新增：`scripts/ecotype_pca_v2/` ——冻结统计设计的独立新流水线
 
 **跟本文档下面所有内容（`scripts/ecotype_pca/`，下称v1）是并行的两套代码，
@@ -32,13 +59,14 @@
   EIGENSTRAT/BAM数据上跑通过33+18个单元/集成测试（pure-Python部分实际跑过，
   `test_integration_synthetic.sh`需要plink2，本机没有，没跑）。
 
-**v2当前状态（3次commit，`codex/ecotype-pca-panel`分支）**：
+**v2截至2026-08-15的历史状态（后续状态以上方2026-08-16节为准）**：
 1. `10878d7`——Batch 1初版：`00`-`08`共9个脚本+`lib_ecotype_v2.py`+config。
 2. `03032ed`——Batch 1 correction：修复GPT review发现的15项实现问题（enum
    硬校验、04的LD计算改成分块流式避免OOM、07/08接口修复、manifest字段拆分、
    overwrite保护等），新增33个实测通过的单元测试。
-3. 两个data question（Civáň japonica标签带不带括号；Panel B用raw 720还是
-   filtered 718、2个UNK的技术状态）**没有替用户决定，等确认**。
+3. 当时的两个data question中，Civáň标签已在2026-08-16按真实`.ind`产出
+   确认为带括号版本；Panel B用raw 720还是filtered 718、2个UNK的技术状态
+   仍未替用户决定，等待stage 10证据。
 4. **capture bait BED全仓库4个分支都搜不到**，capture track（CAPTURE.TV/
    CAPTURE.ALL）完全被卡住，shotgun track不受影响。
 
@@ -52,7 +80,8 @@ BATCH_1_FULL两级门禁）、`01_make_panel_manifest.py`、
 被阻塞**）、`06_build_reference_sample_set.py`（每个panel的axis-builder
 keep-list，含595/718-720/五标签的硬校验）、`07_make_fixed_markers.sh`
 （geno→MAF→LD剪枝，冻结`*.fixed.snplist`）、`08_make_5kb_thinned_markers.py`
-（Panel B的paperlike_5kb路线）。`tests/`下4个测试文件。
+（Panel B的paperlike_5kb路线）。2026-08-16另新增LD边界测试与workflow
+controller测试；以仓库当前`tests/`文件树为准，不再维护硬编码测试文件总数。
 
 **v1本次会话修的两处真实bug**（`scripts/ecotype_pca/pseudo_haploid_call.py`，
 commit `a4fb1e6`+`c058189`）：

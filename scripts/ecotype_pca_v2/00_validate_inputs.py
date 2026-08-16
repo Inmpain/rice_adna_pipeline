@@ -162,7 +162,11 @@ def check_tools(logger):
             ok = False
         else:
             logger.info(f"[tools] {name}: {v}")
-    for mod in ("yaml", "pandas", "numpy"):
+    # matplotlib is required by the PCA plot/review stages; pysam is required
+    # by pseudo-haploid calling and its real-BAM regression test.  Treat both
+    # as workflow prerequisites instead of discovering them halfway through a
+    # compute job.
+    for mod in ("yaml", "pandas", "numpy", "matplotlib", "pysam"):
         try:
             __import__(mod)
             logger.info(f"[python] {mod}: importable")

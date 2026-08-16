@@ -512,8 +512,8 @@ indica
 aus
 aromatic
 japonica
-japonica_temperate
-japonica_tropical
+japonica_(temperate)
+japonica_(tropical)
 ```
 
 以下全部只能 projection，不得进入 `poplistname`：
@@ -653,19 +653,35 @@ Pseudo-haploid calling：
 randomly choose one surviving read allele
 ```
 
-随机种子必须稳定、可重复，并由下列内容确定：
+随机种子必须稳定、可重复。先由下列内容确定 run seed：
 
 ```text
-sample + panel + track
+sample + panel
 ```
+
+再由下列内容确定每个位点的 site seed：
+
+```text
+run seed + contig + position
+```
+
+`track` **不得**进入随机种子。TV 与 ALL 在共同的 transversion 位点必须
+从同一批合格 reads 中抽到同一个 allele；否则 TV/ALL 差异会混入随机抽样
+差异，不能解释为 transition 信号。panel SNP 行顺序和其他位点是否被访问也
+不得改变该位点的抽样结果。
 
 Genotype 编码：
 
 ```text
-REF = 0
-ALT = 2
+REF = 2
+ALT = 0
 no usable allele = 9
 ```
+
+这里遵循 EIGENSTRAT 官方定义：genotype 数字是 reference allele copy 数。
+因此 pseudo-haploid REF 为 2、ALT 为 0；不得按 VCF ALT dosage 习惯写反。
+权威格式定义见DReichLab/EIG的
+[`CONVERTF/README`](https://github.com/DReichLab/EIG/blob/master/CONVERTF/README#L62-L72)。
 
 第三等位或不匹配等位：
 
@@ -712,8 +728,8 @@ indica
 aus
 aromatic
 japonica
-japonica_temperate
-japonica_tropical
+japonica_(temperate)
+japonica_(tropical)
 ```
 
 Ancient 永远不得进入 `poplistname`。
@@ -806,8 +822,8 @@ JAPONICA_COMBINED
 
 ```text
 japonica
-japonica_temperate
-japonica_tropical
+japonica_(temperate)
+japonica_(tropical)
 ```
 
 但 broad classification 必须同时提供：
@@ -1023,8 +1039,8 @@ panel_C_civan:
     - aus
     - aromatic
     - japonica
-    - japonica_temperate
-    - japonica_tropical
+    - japonica_(temperate)
+    - japonica_(tropical)
   project_all_other_modern: true
   geno: 0.05
   maf: 0.01

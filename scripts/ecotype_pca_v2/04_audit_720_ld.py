@@ -23,8 +23,8 @@ engineering/resource-safety issues (explicitly in scope per the batch
 correction rules), not as new statistical parameters:
 
 1. Genome-wide-in-one-shot -> processed in fixed-size physical CHUNKS
-   (--block-mb, default 20Mb) with a halo of --max-window-kb behind each
-   chunk's start, so every true pair within the window is still found
+   (--block-mb, default 20Mb) with a forward halo of --max-window-kb beyond
+   each chunk's end, so every true pair within the window is still found
    (nothing is dropped, nothing is subsampled) but no single plink2
    invocation or intermediate .vcor file spans an entire chromosome. Each
    pair is attributed to exactly one chunk (the chunk owning its
@@ -47,6 +47,17 @@ Also corrected: any required chromosome that fails (plink2 error, missing
 the whole script exit non-zero. The previous version logged an error and
 `continue`d, silently returning exit 0 with a partial/empty summary --
 exactly the failure mode this correction batch was told to fix.
+
+SECOND CORRECTION (2026-08-16, repository audit): the first chunked version
+put its halo *behind* each block while assigning each pair to the block that
+owns the lower-coordinate SNP.  A pair crossing a block end was therefore
+absent from the owner block's PLINK query, then seen-but-discarded in the next
+block because its lower SNP belonged to the previous block.  The query now
+starts at block_start and extends to block_end + halo, while the same
+lower-coordinate ownership rule removes duplicates.  A pure-Python boundary
+regression test protects this geometry.  The final distance bin also includes
+a pair exactly max-window-kb (500kb) apart instead of dropping that one-base
+boundary case.
 """
 import shutil
 import subprocess
@@ -66,10 +77,24 @@ DIST_BINS_BP = [
 
 
 def bin_label(dist):
-    for lo, hi, lab in DIST_BINS_BP:
-        if lo <= dist < hi:
+    for i, (lo, hi, lab) in enumerate(DIST_BINS_BP):
+        # The configured PLINK window includes the exact upper boundary.
+        # Keep a pair exactly 500kb apart in the final "200-500kb" bin.
+        if lo <= dist < hi or (i == len(DIST_BINS_BP) - 1 and dist == hi):
             return lab
     return None
+
+
+def chunk_query_bounds(block_start, block_end, chrom_max, halo_bp):
+    """Query bounds for lower-coordinate ownership.
+
+    A pair belongs to the block containing its lower-coordinate SNP.  The
+    query therefore starts at the block start and must extend *forward* past
+    the block end by the full LD window.  A backward halo would expose a
+    boundary pair only in the following block, where ownership filtering
+    would then discard it.
+    """
+    return block_start, min(chrom_max, block_end + halo_bp)
 
 
 def run_plink_ld(bfile, keep, chrom, from_bp, to_bp, max_window_kb, out_prefix, logger):
@@ -155,9 +180,11 @@ def main():
             if bisect_right(positions, block_end) <= bisect_left(positions, block_start):
                 continue  # no SNPs owned by this block, skip invoking plink2 entirely
 
-            plink_from = max(1, block_start - halo_bp)
+            plink_from, plink_to = chunk_query_bounds(
+                block_start, block_end, chrom_max, halo_bp
+            )
             chunk_prefix = work_dir / f"chr{chrom}.block{block_i}"
-            proc = run_plink_ld(args.bfile, args.keep, chrom, plink_from, block_end,
+            proc = run_plink_ld(args.bfile, args.keep, chrom, plink_from, plink_to,
                                  args.max_window_kb, chunk_prefix, logger)
             if proc.returncode != 0:
                 logger.error(f"chr{chrom} block {block_i} [{block_start}-{block_end}]: FAIL -- "

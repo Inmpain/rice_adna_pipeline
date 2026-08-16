@@ -58,8 +58,12 @@ panel_C_civan:
     - aus
     - aromatic
     - japonica
-    - japonica_temperate
-    - japonica_tropical
+    # Exact whitespace-sanitized strings written by
+    # build_civan_population_labels.py and present in the v1 verified
+    # domesticated-axis label file.  Do not normalize away the parentheses:
+    # EIGENSTRAT population labels are exact string keys.
+    - japonica_(temperate)
+    - japonica_(tropical)
   expected_axis_builder_n: 595
   project_all_other_modern: true
   geno: 0.05

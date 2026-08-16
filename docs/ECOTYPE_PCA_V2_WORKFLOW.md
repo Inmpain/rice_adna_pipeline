@@ -1,0 +1,138 @@
+# Ecotype PCA v2 ordered workflow
+
+This is the functional overview for executing and debugging PCA v2. Exact
+statistical parameters and acceptance definitions remain in
+`ECOTYPE_PCA_V2_SPEC.md`; they are deliberately not repeated as editable shell
+arguments here.
+
+## Why this controller exists
+
+The earlier runbooks are valuable history but can be executed out of order, and
+chat memory can accidentally mix v1 results, proposed commands and real server
+results. `scripts/ecotype_pca_v2/workflow/ecotype_pca_workflow.py` replaces
+that execution surface with a version-controlled, fail-closed state machine.
+
+It guarantees the following mechanical properties:
+
+1. Only the first incomplete stage can run. A stage cannot be skipped by
+   naming a later ID.
+2. Success requires exit code 0 or an explicit evidence-backed manual PASS.
+3. A receipt is tied to the stage definition, every tracked implementation
+   file, the frozen config and upstream receipt hashes.
+4. Changing config/code makes the affected receipt stale and locks downstream
+   work. Re-downloading a corrected commit does not silently bless an old run.
+5. Each retry uses a new timestamped attempt directory. Failed output is never
+   overwritten and is automatically packaged as `*.debug.tar.gz`.
+6. Scientific visual review is a manual gate. The controller never decides
+   that clusters “look right.”
+
+This controls order and provenance; it cannot prove that an external program or
+input dataset is scientifically correct. That is why preflight, exact-mask
+validation and manual gates remain separate stages.
+
+## Fixed stage order
+
+| Stage | Purpose | Initial availability |
+|---|---|---|
+| 00 | Repository/config/spec/pure-test self-check | open |
+| 10 | Real server preflight, synthetic integration, BAM/panel evidence | open |
+| 20 | Full 2.365M-marker Civán modern-only PCA in SLURM | open after 00/10 |
+| 30 | Human review of PC1–2, PC3–4, log and summary | manual gate |
+| 40 | Implement/test v2 scripts 09–18 | fail-closed blocker |
+| 50 | LV7008416379 Civán fixed-marker prototype | locked |
+| 60 | 3K MAF=0.01 fixed-marker prototype | locked |
+| 70 | Decide 720/718 and run corrected Panel-B audit | locked |
+| 80 | All-ancient production plus sensitivity/cross-panel summary | locked |
+
+The machine-readable authority is `workflow/workflow.json`. Later commits open
+stages 40 onward only when their implementation and tests actually exist.
+
+## First server run
+
+Use an immutable 40-character commit supplied with the GitHub handoff. The
+bootstrap refuses branches and refuses to overwrite an installation:
+
+```bash
+bash bootstrap_ecotype_pca_v2.sh \
+  --ref <FULL_COMMIT> \
+  --dest /home/scratch/yinmt202607/gene/workflow_sources
+```
+
+Then define reusable paths:
+
+```bash
+SRC=/home/scratch/yinmt202607/gene/workflow_sources/rice_adna_pipeline-<FULL_COMMIT>
+STATE=/home/scratch/yinmt202607/gene/results/ecotype_pca_v2/workflow_state
+CTL="$SRC/scripts/ecotype_pca_v2/workflow/ecotype_pca_workflow.py"
+cd "$SRC"
+```
+
+Inspect, then run the current stage:
+
+```bash
+python3 "$CTL" --state-dir "$STATE" status
+python3 "$CTL" --state-dir "$STATE" next
+python3 "$CTL" --state-dir "$STATE" run
+```
+
+Run `run` again only after the previous receipt exists. Stage 10 is a
+read-only server preflight. It permits capture to remain explicitly BLOCKED
+but requires the shotgun inputs, labels, tools, synthetic integration and
+pseudo-haploid regression test to pass.
+
+## Stage 20 through SLURM
+
+The controller refuses stage 20 on a login node. From the immutable source
+directory, submit the same controller inside an allocation:
+
+```bash
+sbatch --wait -p comp --exclude=node05,node06 \
+  -c 2 --mem 24G -t 24:00:00 \
+  -J pca2_civan_full \
+  -o "$STATE/20_civan_full.%j.slurm.log" \
+  --wrap="cd '$SRC' && python3 '$CTL' --state-dir '$STATE' run 20_civan_full_modern_sanity"
+```
+
+The computational receipt is written only after smartpca, row-count checks and
+both PNGs finish successfully. It does not pass the scientific review gate.
+
+## Manual review gate
+
+After reviewing the two PNGs and log, record an evidence-backed decision. Do
+not accept merely because the job exited zero:
+
+```bash
+ATTEMPT=$(find "$STATE/attempts/20_civan_full_modern_sanity" -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
+python3 "$CTL" --state-dir "$STATE" accept 30_civan_full_modern_review \
+  --decision PASS \
+  --evidence "$ATTEMPT/full_civan.PC1_PC2.png" \
+  --evidence "$ATTEMPT/full_civan.PC3_PC4.png" \
+  --evidence "$ATTEMPT/full_civan.smartpca.log" \
+  --evidence "$ATTEMPT/full_civan.summary.tsv" \
+  --note "Reviewed against Civán modern population structure; <write concrete observations>."
+```
+
+If the result is not credible, do not create a PASS receipt. Return the debug
+bundle and images for code/data review.
+
+## Debug loop
+
+Any failed command prints a line like:
+
+```text
+DEBUG_BUNDLE=/.../20260816T....10_server_preflight.debug.tar.gz
+```
+
+Send that tarball back. It contains only workflow metadata, config, receipts,
+logs and small attempt outputs—not BAMs or genotype matrices. After a fix is
+committed, install the new immutable commit but reuse the same `STATE` path.
+The digest mechanism will show exactly which receipt became `STALE`; unchanged
+accepted stages remain complete.
+
+To recreate a bundle manually for the current stage:
+
+```bash
+python3 "$CTL" --state-dir "$STATE" debug-bundle
+```
+
+Never edit a receipt by hand and never copy a receipt between state roots.

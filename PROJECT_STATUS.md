@@ -1,7 +1,48 @@
+# Rice aDNA pipeline — project status
 
-## 2026-07-29 进展更新
+Last updated: 2026-08-16. This file was previously truncated; this compact
+version restores the current project-level view. Workstream details remain in
+their branch handoff documents rather than being duplicated here.
 
-完成9格提取方法x定量比对工具矩阵测试，详见docs/09_extraction_mapping_matrix_final.md
-和docs/decisions_log.md。核心结论：提取阶段(阶段①)用BWA是决定性因素，
-定量比对阶段用BWA或Bowtie2新参数(-N1)均可接受。为"坚持用BWA"这一决策
-提供了最完整的证据支撑。
+## Stable results
+
+- The 3×3 extraction/mapping comparison is complete. BWA at the extraction
+  stage is the decisive improvement; see `docs/09_extraction_mapping_matrix_final.md`.
+- The ecotype-PCA population-label and UNK-filtering preparation exists for all
+  three modern panels. The v1 16×3 plots are explicitly first-look diagnostics,
+  not final or cross-sample-comparable PCA results.
+
+## Active workstream: ecotype PCA v2
+
+- Active branch: `codex/ecotype-pca-panel`.
+- Statistical design: reference-first, one frozen modern marker set and one PCA
+  coordinate system per panel; ancient samples are projection-only.
+- Implemented analysis components: scripts 00–08 (input validation, manifests,
+  PLINK conversion, audits, reference-set construction, marker freezing and
+  Panel-B 5kb thinning).
+- Implemented execution control: a receipt-based ordered workflow under
+  `scripts/ecotype_pca_v2/workflow/`. It refuses skipped stages, invalidates
+  stale receipts after code/config changes, preserves every failed attempt and
+  creates returnable debug bundles.
+- Corrected on 2026-08-16: exact Civán label strings, EIGENSTRAT REF=2/ALT=0
+  specification, TV/ALL seed invariant, and the Panel-B LD forward-halo bug.
+
+## Current next stage
+
+Run the ordered workflow stages 00 and 10 on the server, return the generated
+debug bundle if either fails, then run stage 20 (full modern Civán sanity PCA)
+inside SLURM. Stage 30 requires human review of PC1–2 and PC3–4.
+
+## Fail-closed blockers
+
+- v2 scripts 09–20 are not implemented; fixed-marker ancient prototype and
+  production stages remain locked in `workflow.json`.
+- Panel B raw 720 versus filtered 718 must be decided from technical evidence,
+  not population labels.
+- Capture-track work has no confirmed bait BED. Shotgun work is independent.
+- Whole-genus versus taxonomic-tier ancient BAM input must be audited before
+  production interpretation.
+
+See `docs/ECOTYPE_PCA_PANEL.md` for handoff state,
+`docs/ECOTYPE_PCA_V2_WORKFLOW.md` for execution, and
+`docs/ECOTYPE_PCA_V2_SPEC.md` for frozen statistical details.
