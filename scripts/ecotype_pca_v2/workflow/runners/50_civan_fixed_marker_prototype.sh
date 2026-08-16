@@ -6,7 +6,7 @@ cd "$RICE_PCA_REPO_ROOT"
 eval "$(python3 - "$RICE_PCA_CONFIG" <<'PY'
 import shlex,sys,yaml
 c=yaml.safe_load(open(sys.argv[1])); p=c['inputs']['panel_C_civan']
-for k,v in {'SNP':f"{p['dir']}/{p['prefix']}{p['filtered_suffix']}.snp",'BAMDIR':c['inputs']['ancient_bam_dir']}.items(): print(f'{k}={shlex.quote(v)}')
+for k,v in {'SNP':f"{p['dir']}/{p['prefix']}.snp",'BAMDIR':c['inputs']['ancient_bam_dir']}.items(): print(f'{k}={shlex.quote(v)}')
 PY
 )"
 BAM="$BAMDIR/LV7008416379.besthit_oryza.irgsp.bam"; [[ -s "$SNP" && -s "$BAM" ]] || { echo "FATAL: missing Civán SNP or prototype BAM" >&2; exit 2; }
