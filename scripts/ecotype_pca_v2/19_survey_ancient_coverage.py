@@ -11,8 +11,10 @@ chromosomes. This script produces the coverage-aware marker universe that
 replaces "first N in file order": every panel site that at least one ancient
 BAM actually covers (ancient_union_sites.tsv), the subset covered by at least
 --core-min-samples BAMs for sensitivity analysis (ancient_core_sites.tsv),
-and a per-sample coverage summary. Wiring this into Stage 50 is a separate
-follow-up -- this script only produces the three TSVs plus a manifest.
+and a per-sample coverage summary. This survey deliberately does not filter
+by transversion/transition -- see 20_filter_coverage_sites_to_transversions.py
+for that post-filter step, which does not require re-scanning any BAM. Wiring
+the result into Stage 50 is a separate follow-up.
 """
 
 from __future__ import annotations
@@ -24,8 +26,8 @@ from collections import defaultdict
 from pathlib import Path
 
 from fixed_projection_lib import (
-    format_contig, parse_sample_paths, refuse_existing, sha256_file,
-    tally_coverage, write_tsv,
+    format_contig, iter_panel_snp, parse_sample_paths, refuse_existing,
+    sha256_file, tally_coverage, write_tsv,
 )
 from lib_ecotype_v2 import load_config
 
@@ -45,25 +47,6 @@ def parse_args():
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
-
-
-def iter_panel_snp(path):
-    """Lenient reader for the raw upstream panel .snp: silently skips any line
-    that is not a clean 6-column (id chrom genpos pos ref alt) row, matching
-    the tolerance already used by the Stage 50 prototype's marker selection
-    (unlike fixed_projection_lib.iter_snp, which is strict and is meant for
-    already-curated fixed-marker subsets, not this raw 2.36M-row file)."""
-    with open(path) as handle:
-        for line in handle:
-            fields = line.split()
-            if len(fields) != 6:
-                continue
-            snp_id, chrom, _genpos, pos_text, _ref, _alt = fields
-            try:
-                pos = int(pos_text)
-            except ValueError:
-                continue
-            yield {"id": snp_id, "chrom": chrom, "pos": pos}
 
 
 def main() -> int:

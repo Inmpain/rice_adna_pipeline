@@ -125,6 +125,26 @@ def iter_snp(path: str | Path):
             }
 
 
+def iter_panel_snp(path: str | Path):
+    """Lenient reader for a raw upstream panel .snp file (e.g. civan_snp.snp,
+    2.36M rows): silently skips any line that is not a clean 6-column (id
+    chrom genpos pos ref alt) row, matching the tolerance the Stage 50
+    prototype's own marker selection already used against this same file.
+    Unlike iter_snp (strict; meant for already-curated fixed-marker subsets),
+    this is for the raw upstream panel, which is not guaranteed clean."""
+    with open(path) as handle:
+        for line in handle:
+            fields = line.split()
+            if len(fields) != 6:
+                continue
+            snp_id, chrom, _genpos, pos_text, ref, alt = fields
+            try:
+                pos = int(pos_text)
+            except ValueError:
+                continue
+            yield {"id": snp_id, "chrom": chrom, "pos": pos, "ref": ref.upper(), "alt": alt.upper()}
+
+
 def read_calls(path: str | Path) -> str:
     calls = []
     with open(path) as handle:
