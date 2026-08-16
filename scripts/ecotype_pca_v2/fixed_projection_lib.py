@@ -236,3 +236,22 @@ def nearest_group(rows: list[dict], panel: str, query_pcs: list[float], dimensio
     winner = winners[0] if len(winners) == 1 else "UNRESOLVED_TIE"
     detail = ";".join(f"{group}:{counts[group]}" for group in sorted(counts))
     return winner, max_count, detail
+
+
+def format_contig(contig_format: str, chrom: str) -> str:
+    """EIGENSTRAT .snp chrom column -> BAM-style contig name, e.g. '1' or '01'
+    -> 'chr01' with the default contig_format. Shared by every script that
+    must match panel chromosome labels against BAM reference names."""
+    try:
+        return contig_format % int(chrom.lstrip("0") or "0")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"unsupported chromosome {chrom!r}") from exc
+
+
+def tally_coverage(sample_covered: dict[str, set]) -> dict[object, set[str]]:
+    """{sample: {site, ...}} -> {site: {sample, ...}}. Pure aggregation, no I/O."""
+    tally: dict[object, set[str]] = defaultdict(set)
+    for sample, sites in sample_covered.items():
+        for site in sites:
+            tally[site].add(sample)
+    return dict(tally)
