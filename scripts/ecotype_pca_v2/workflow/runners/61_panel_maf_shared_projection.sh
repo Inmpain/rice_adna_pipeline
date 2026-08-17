@@ -18,6 +18,7 @@ set -euo pipefail
 : "${RICE_PCA_REPO_ROOT:?}"; : "${RICE_PCA_CONFIG:?}"; : "${RICE_PCA_ATTEMPT_DIR:?}"
 : "${PANEL_LETTER:?A or B}"
 : "${PANEL_ANCIENT_SAMPLES:?space-separated list of ancient sample IDs}"
+: "${PANEL_REFERENCE_FASTA:?path to the IRGSP reference FASTA the ancient BAMs were mapped against}"
 cd "$RICE_PCA_REPO_ROOT"
 
 case "$PANEL_LETTER" in
@@ -43,6 +44,16 @@ PY
 
 OUT="$RICE_PCA_ATTEMPT_DIR"
 mkdir -p "$OUT/plink_input_staging" "$OUT/plink" "$OUT/reference_sets" "$OUT/maf_ld" "$OUT/SHARED/calls"
+
+echo "=== Step 0: REF-vs-FASTA validation (once, against the raw panel $PANEL_LETTER .snp) ==="
+# Never run for this panel before -- docs/ECOTYPE_PCA_PANEL_QC_DESIGN.md
+# section 3 explicitly flags Panel B (720)'s REF/ALT orientation as unknown
+# ("most urgent, least understood"), and Panel A was never checked either.
+# Civan's own check (51_civan_maf_ld_and_private_axis.sh Step 0) found a
+# systematic-but-harmless REF/ALT swap; do not assume the same holds here.
+python3 scripts/ecotype_pca_v2/23_validate_snp_ref_against_fasta.py \
+  --snp "$PANEL_SNP" --fasta "$PANEL_REFERENCE_FASTA" \
+  --out "$OUT/${PANEL_LABEL}.ref_vs_fasta.report.tsv"
 
 echo "=== Step 1: stage $PANEL_LABEL raw .snp + filtered .ind/geno under one shared prefix ==="
 # Same split-naming workaround as 51_civan_maf_ld_and_private_axis.sh: 02
@@ -84,7 +95,7 @@ python3 scripts/ecotype_pca_v2/09_export_fixed_reference_eigenstrat.py \
   --label "$PANEL_LABEL" --out-dir "$SHARED_DIR"
 REFERENCE_PREFIX="$SHARED_DIR/${PANEL_LABEL}.pooled_mixed.ALL.fixed_reference"
 
-SUMMARY="$OUT/stage61_summary.tsv"
+SUMMARY="$OUT/${PANEL_LABEL}.stage61_summary.tsv"
 printf 'sample\ttechnical_execution\ttechnical_note\n' > "$SUMMARY"
 
 CALLS_ARGS=()
