@@ -154,3 +154,43 @@ No parameter change was made. No capture/shotgun separation was inferred.
 capture_bait_bed remains null. MAPQ/BaseQ/MAF/LD参数未受影响。
 
 相关文件：`scripts/ecotype_pca_v2/23_validate_snp_ref_against_fasta.py`。
+
+---
+
+## [决策] 2026-08-17：Civán panel C shared marker 集从"全景 LD 剪枝再交集"改成"ancient 覆盖度优先 LD 剪枝"
+
+**背景**：51 号 runner（`51_civan_maf_ld_and_private_axis.sh`）第一次实跑（primary
+敏感度，ALL track）得到的共享 marker 集只有 **47 个**（526,936 geno/MAF 过滤后
+→ LD 剪枝(100kb/r²=0.2)剩 17,708 → 与 ancient union coverage(3,687 个位点)取
+交集剩 47）。逐样本 callability 检查显示 16 个古样本全部落在 `VERY_LOW`（最高
+4/47，多个样本 0/47），smartpca 的 `lsqproject` 因此把大量样本（包括不在 poplist
+里、走投影路线的现代 `O._rufipogon`）判定为 `insufficient data` 直接从 evec 里
+剔除，触发 `15_pca_qc.py` 的硬性 FATAL 门槛。
+
+**排查过程**：先尝试把 sensitivity 从 `primary`(100kb) 换成 `S1`(50kb)，
+但分析后判断瓶颈不在 LD 窗口大小——LD 剪枝是在全基因组 526,936 个位点上独立于
+ancient 覆盖度进行的，选中的"每个 LD block 代表位点"和 ancient shotgun
+reads 实际落点几乎是两个不相关的稀疏集合，交集天然很小，光调窗口大小无法
+根本解决。
+
+**结论与处理**：把执行顺序反过来——不再是"先在全景上做 LD 剪枝，再祈祷剩下
+的位点恰好被 ancient 覆盖"，而是"先把 geno/MAF 过滤后的位点与 ancient union
+coverage 取交集，得到 ancient 确实覆盖到的候选位点，再只在这个小范围内做 LD
+剪枝"，保证每一个通过 LD 剪枝的位点都保证是 ancient 覆盖过的。新增
+`scripts/ecotype_pca_v2/27_ancient_coverage_first_ld_prune.py`，输入是 07
+`--stage geno_maf_only` 的产出加上一份候选 snplist（`25_intersect_snplists.py`
+算出的 geno/MAF 位点 ∩ ancient coverage snplist），只在候选集合内部跑
+`plink2 --indep-pairwise`（ld_window_kb/ld_r2 仍从 config 按 panel+sensitivity
+解析，未改动任何冻结数值）。`51_civan_maf_ld_and_private_axis.sh` 的 Track
+循环相应改成：07(geno_maf_only) → 21+25(候选交集) → 27(候选内部 LD 剪枝)，
+产出文件名 `civan.<TRACK>.<SENSITIVITY>.ancient_first.fixed.snplist`。
+
+**不做的事**：没有改动 `07_make_fixed_markers.sh` 本身——它是 A/B/C 三个面板
+共用的冻结脚本，Panel A(3K)/Panel B(720) 目前都还没有实际跑过这套 marker
+选择流程（`results/ecotype_pca_v2/` 在仓库里不存在，两者对应的 workflow 阶段
+`60_panel_a_3k_prototype`/`70_panel_b_720_decision_and_audit` 都还是 locked），
+所以这次改动只新增了一条可选路径，不影响它们将来沿用原有"全景 LD 剪枝→交集"
+顺序（如果那样更合适的话）。MAF/geno/LD 数值本身未改动，只改了应用顺序。
+
+相关文件：`scripts/ecotype_pca_v2/27_ancient_coverage_first_ld_prune.py`、
+`scripts/ecotype_pca_v2/workflow/runners/51_civan_maf_ld_and_private_axis.sh`。

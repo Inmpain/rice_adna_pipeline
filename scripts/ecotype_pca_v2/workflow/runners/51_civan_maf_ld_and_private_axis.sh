@@ -59,30 +59,43 @@ CIVAN_REFERENCE_KEEP="$OUT/reference_sets/civan.reference_samples.keep"
 SUMMARY="$OUT/stage51_summary.tsv"
 printf 'section\ttrack\tsample\ttechnical_execution\ttechnical_note\tcallable_n\n' > "$SUMMARY"
 
+CIVAN_SENSITIVITY="${CIVAN_SENSITIVITY:-primary}"
+
 for TRACK in ALL TV; do
-  echo "=== Track $TRACK: MAF/LD marker selection (07) ==="
+  TRACK_DIR="$OUT/SHARED/$TRACK"
+  mkdir -p "$TRACK_DIR/calls"
+
+  echo "=== Track $TRACK: geno/MAF filter only, no LD yet (07 --stage geno_maf_only, sensitivity=$CIVAN_SENSITIVITY) ==="
   bash scripts/ecotype_pca_v2/07_make_fixed_markers.sh \
-    --config "$RICE_PCA_CONFIG" --panel C --sensitivity primary \
-    --library-type pooled_mixed --track "$TRACK" \
+    --config "$RICE_PCA_CONFIG" --panel C --sensitivity "$CIVAN_SENSITIVITY" \
+    --library-type pooled_mixed --track "$TRACK" --stage geno_maf_only \
     --bfile "$CIVAN_BFILE" --keep "$CIVAN_REFERENCE_KEEP" \
     --label civan --out-dir "$OUT/maf_ld"
-  MAF_LD_SNPLIST="$OUT/maf_ld/civan.pooled_mixed.${TRACK}.primary.fixed.snplist"
+  GENO_MAF_BFILE="$OUT/maf_ld/civan.pooled_mixed.${TRACK}.${CIVAN_SENSITIVITY}.geno_maf_filtered"
+  GENO_MAF_SNPLIST="$OUT/maf_ld/civan.pooled_mixed.${TRACK}.${CIVAN_SENSITIVITY}.geno_maf.snplist"
+  cut -f2 "${GENO_MAF_BFILE}.bim" > "$GENO_MAF_SNPLIST"
 
-  echo "=== Track $TRACK: intersect MAF/LD-clean IDs with ancient-coverage IDs ==="
+  echo "=== Track $TRACK: ancient-coverage candidate list (geno/MAF-passing ∩ ancient union coverage) ==="
   case "$TRACK" in
     ALL) COVERAGE_SITES="$CIVAN_UNION_SITES" ;;
     TV)  COVERAGE_SITES="$CIVAN_UNION_SITES_TV" ;;
   esac
-  TRACK_DIR="$OUT/SHARED/$TRACK"
-  mkdir -p "$TRACK_DIR/calls"
   COVERAGE_SNPLIST="$TRACK_DIR/coverage.snplist.txt"
   python3 scripts/ecotype_pca_v2/21_extract_fixed_snplist.py \
     --sites-tsv "$COVERAGE_SITES" --out "$COVERAGE_SNPLIST"
 
-  CLEAN_SNPLIST="$TRACK_DIR/civan.maf_ld_and_coverage.fixed.snplist"
+  CANDIDATE_SNPLIST="$TRACK_DIR/civan.ancient_covered_candidate.snplist"
   python3 scripts/ecotype_pca_v2/25_intersect_snplists.py \
-    --snplist "$MAF_LD_SNPLIST" --snplist "$COVERAGE_SNPLIST" \
-    --out "$CLEAN_SNPLIST"
+    --snplist "$GENO_MAF_SNPLIST" --snplist "$COVERAGE_SNPLIST" \
+    --out "$CANDIDATE_SNPLIST"
+
+  echo "=== Track $TRACK: ancient-coverage-first LD pruning (27) -- LD only within ancient-covered candidates ==="
+  python3 scripts/ecotype_pca_v2/27_ancient_coverage_first_ld_prune.py \
+    --config "$RICE_PCA_CONFIG" --panel C --sensitivity "$CIVAN_SENSITIVITY" \
+    --library-type pooled_mixed --track "$TRACK" \
+    --geno-maf-bfile "$GENO_MAF_BFILE" --restrict-to "$CANDIDATE_SNPLIST" \
+    --label civan --out-dir "$TRACK_DIR"
+  CLEAN_SNPLIST="$TRACK_DIR/civan.${TRACK}.${CIVAN_SENSITIVITY}.ancient_first.fixed.snplist"
 
   echo "=== Track $TRACK: shared-matrix fixed reference on the cleaned marker set (09) ==="
   python3 scripts/ecotype_pca_v2/09_export_fixed_reference_eigenstrat.py \
