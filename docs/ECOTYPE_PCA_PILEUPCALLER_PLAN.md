@@ -60,6 +60,34 @@ coverage”：共享轴交 ancient union，私有轴交每样本自己的覆盖�
 
 ---
 
+## 1.1 Phase 0（前置）— panel REF/ALT vs 参考基因组校验
+
+在进入 Phase A 之前，先对每个面板做一次 REF/ALT 与参考基因组的一致性校验，避免把
+方向错误的 REF/ALT 带进 pileupCaller 和下游 0/2 编码。
+
+工具：`scripts/ecotype_pca_v2/23_validate_snp_ref_against_fasta.py`
+
+```text
+--snp <panel 原始 .snp>
+--fasta /home/scratch/yinmt202607/db/asian_rice_panel_index/irgsp.fa
+--out <panel>.ref_vs_fasta.report.tsv
+```
+
+三种结果：
+
+- **PASS**：干净匹配 REF。
+- **干净整体反标**：全位点一致地 REF/ALT 互换，且无 `true_mismatch` / 越界 →
+  记档，决定是否在 pileupCaller `.snp` / `--a2-allele` 层面对齐。
+- **FATAL**：散乱不一致 → 先停，查数据。
+
+当前状态：
+
+- **Civán**：51 runner 的 Step 0 已跑过（发现系统性但无害的 REF/ALT 反标），报告可复用。
+- **3K / 720**：都还没跑过，需要新跑；720 的 REF/ALT 方向在
+  `ECOTYPE_PCA_PANEL_QC_DESIGN.md` 里被标为“最急、最不了解”。
+
+---
+
 ## 2. Phase A — marker 准备（顺序：MAF → coverage 交集，ALL track）
 
 目标：三个面板统一先过 MAF=0.01，再和 ancient coverage 取交集，得到一个可控、
@@ -298,6 +326,7 @@ plink --bfile {prefix} \
 | 三面板 `geno_maf_filtered` | 07 `--stage geno_maf_only` | Civán 的 ALL 份可能已由 51 跑过，需确认后复用 |
 | 3K/720 coverage 普查 | 19 `--panel-snp <panel>.snp` | 新（Civán 复用 Stage 50 的） |
 | 3K/720 coverage 交集 snplist | 25 交集 | 新（共享轴交 union；私有轴交 per-sample） |
+| 3K/720 REF/ALT 校验 | 23 `--snp <panel>.snp --fasta irgsp.fa` | 新（Civán 复用 51 的） |
 | 私有轴 EIGENSTRAT | 29 | 新 |
 | pileupCaller 转换层输出 `.calls.txt/.call_sites.tsv/.call_report.tsv` | 新脚本 | Phase B |
 | 改版后的 PC 图 | plot 脚本 | Phase C |
@@ -306,8 +335,9 @@ plink --bfile {prefix} \
 
 ## 7. 建议执行顺序
 
-`A → C → B`，并做一处解耦：
+`Phase 0 → A → C → B`，并对 B 做一处解耦：
 
+- **Phase 0**：REF/ALT 校验，先确认方向，再进 A。
 - **A**：机械、低风险、全复用现成脚本，且产出是 B 的输入。
 - **C**：改动范围小、独立，先拿下。
 - **B**：风险最大，但 **pileupCaller 的 spike 可以提前**——不依赖三面板 MAF，
