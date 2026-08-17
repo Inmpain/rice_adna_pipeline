@@ -113,6 +113,10 @@ inputs:
     dir: /home/scratch/yinmt202607/db/6.7M_720
     prefix: asn720.6m
     filtered_suffix: .filtered
+    # Confirmed against file_path.md: asn720.6m.filtered.{ind,geno} -- this
+    # panel's genotype file is named .geno, not .eigenstratgeno like panel
+    # A/C. Absent for panel A/C, where the extension is .eigenstratgeno.
+    geno_ext: .geno
   panel_C_civan:
     dir: /home/scratch/yinmt202607/db/paper1
     prefix: civan_snp

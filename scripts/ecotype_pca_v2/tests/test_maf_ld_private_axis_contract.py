@@ -21,7 +21,8 @@ class Contract(unittest.TestCase):
                 capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, f"{name}: {r.stderr}")
         for name in ['07_make_fixed_markers.sh',
-                      'workflow/runners/51_civan_maf_ld_and_private_axis.sh']:
+                      'workflow/runners/51_civan_maf_ld_and_private_axis.sh',
+                      'workflow/runners/61_panel_maf_shared_projection.sh']:
             r = subprocess.run(
                 ['bash', '-n', str(ROOT / 'scripts/ecotype_pca_v2' / name)],
                 capture_output=True, text=True)

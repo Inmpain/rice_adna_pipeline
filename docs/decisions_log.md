@@ -194,3 +194,60 @@ coverage 取交集，得到 ancient 确实覆盖到的候选位点，再只在�
 
 相关文件：`scripts/ecotype_pca_v2/27_ancient_coverage_first_ld_prune.py`、
 `scripts/ecotype_pca_v2/workflow/runners/51_civan_maf_ld_and_private_axis.sh`。
+
+---
+
+## [决策] 2026-08-17：厘清"主分析 vs 辅助分析"顺序被搞反，Civán 到 1015-marker shared 结果为止，3K/720 按原始设计走
+
+**背景**：51 号 runner 这几天几乎全部精力都花在优化"SHARED track"（16 个古样本
+共用一套坐标系、画在一张图上比）——从 47 个 marker 优化到 1015 个。但回头核对
+`docs/ECOTYPE_PCA_EXECUTION_PLAN.md` 第 5 节才发现，这条 SHARED 路线在最初设计
+里明确写的是**"辅助分析（不是主分析，不要求先做）"**：
+
+> 用现代样本的 404K CoreSNP 等 LD 剪枝集合建一套固定坐标轴，古样本按各自覆盖
+> 情况以大量缺失投影……如果固定轴投影和样本专属子集分类结论一致，说服力最强。
+
+而真正的**主分析**是同一份文档第 5 节开头描述、且 `scripts/ecotype_pca/
+run_sample_panel_pca.sh`（v1，已完成 16 样本×3 panel=48 组合批量跑通、
+leave-one-out 正对照也已验证）已经实现的"样本专属 panel 子集"：每个古样本
+用自己在**全景面板**（不是任何预先筛选的固定 marker 集）上真实覆盖到的位点，
+各建各的子集面板投影，样本之间坐标不可比，输出是"最近现代群体+距离"而不是
+一张合图。
+
+也就是说，这几天的顺序是反的：把本该次要的 SHARED 路线当主线死磕，而 51 号
+runner 里的 private axis 又被错误地限制成 SHARED 那套 1015-marker 参考的子集
+（`24_extract_sample_covered_sites.py` 吃的是对 1015 个 marker calling 的结果），
+而不是 v1 真正设计的"对全景面板独立 calling"——这正是它一跑就报 350 个现代样本
+insufficient data 的原因。
+
+**处理方案（用户拍板）**：
+1. **Civán（Panel C）到此为止**，不再追加 TV track，也不再修 51 号 runner 里
+   private axis 的实现——现有 1015-marker ALL track shared 结果保留作为一次
+   有效的方法论验证（证明了 ancient-coverage-first LD 剪枝确实能大幅提高
+   callable marker 数），不再投入更多时间往深处抠。
+2. **3K（Panel A）/720（Panel B）两条线都要做，且都简化**：
+   - **主分析**：直接复用 v1 现成、已验证过的 `run_sample_panel_pca.sh` +
+     `docs/ECOTYPE_PCA_PHASE1_COMMANDS.md` 第 7 节已经写好的批量提交命令
+     （16 样本 × {29m3k, 720} 两个面板），不重新设计。
+   - **辅助/交叉验证**：只用 MAF 过滤为主（geno→MAF→LD，LD 不深入优化，
+     不做 ancient-coverage-first 那套），ALL track，目标每个面板留到几百个
+     marker 量级即可，新增通用 runner
+     `scripts/ecotype_pca_v2/workflow/runners/61_panel_maf_shared_projection.sh`
+     （`--panel A` 或 `--panel B`，复用 00-26 号脚本库，跳过 07 之外的一切
+     Civán 专属复杂度），画出 PC1-PC10 全部五对图（同 51 号 runner 的
+     `26_plot_pc_pairs.sh` 用法）。
+3. 顺带补了一个 config 缺口：`panel_B_720` 的真实基因型文件叫
+   `asn720.6m.filtered.geno`（不是 `.eigenstratgeno`，跟 Panel A/C 不一样，
+   已用 `docs/file_path.md` 核实），config 里新增 `geno_ext: .geno` 字段，
+   `61_panel_maf_shared_projection.sh` 按需读取，默认仍是 `.eigenstratgeno`。
+
+**不做的事**：没有回头改 Civán 51 号 runner 的 private axis 实现（已知偏离
+v1 设计，但用户决定不再追加投入）；3K/720 的私有轴投影没有写新代码，完全复用
+v1 现成脚本；`07_make_fixed_markers.sh`、`27_ancient_coverage_first_ld_prune.py`
+均未改动。
+
+相关文件：`scripts/ecotype_pca_v2/workflow/runners/61_panel_maf_shared_projection.sh`、
+`scripts/ecotype_pca_v2/config/ecotype_pca_v2.yaml`、
+`scripts/ecotype_pca/run_sample_panel_pca.sh`（未改动，直接复用）、
+`docs/ECOTYPE_PCA_EXECUTION_PLAN.md` 第 5 节、
+`docs/ECOTYPE_PCA_PHASE1_COMMANDS.md` 第 7 节。
