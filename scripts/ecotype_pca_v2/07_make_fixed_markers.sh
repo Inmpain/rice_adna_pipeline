@@ -49,6 +49,16 @@
 #     the final pruned bed/bim/fam) is now existence-checked against
 #     --overwrite before being written, not just the two final outputs.
 #
+# CORRECTED (2026-08-17): --library-type gains a third value, pooled_mixed,
+# alongside shotgun/capture. Our ancient BAMs are pooled_mixed_capture_plus_shotgun
+# (see fixed_projection_lib.POOLED_LIBRARY_TYPE, used throughout scripts
+# 09-22) -- before this change, running 07 against them required passing
+# --library-type shotgun (the only enum value not requiring a bait list),
+# which would have silently mislabeled pooled data as shotgun in every
+# output filename and manifest row. pooled_mixed is handled identically to
+# shotgun in the bait-list logic below (no filtering, BASE_LIST empty) --
+# only the label is now honest.
+#
 # Once *.fixed.snplist exists for a given (panel, library_type, track,
 # sensitivity) combination, it must never be regenerated to add/drop SNPs
 # because an ancient sample was added -- pass --overwrite only when you mean
@@ -70,7 +80,7 @@ PLINK_THREADS="${RICE_PCA_PLINK_THREADS:-1}"
 print_usage() {
   cat <<EOF
 Usage: $0 --config CFG --panel {A|B|C} --sensitivity {primary|S1|S2|S3|S4} \\
-          --library-type {shotgun|capture} --track {TV|ALL} \\
+          --library-type {shotgun|capture|pooled_mixed} --track {TV|ALL} \\
           --bfile PLINK_PREFIX --keep REFERENCE_KEEP_FILE --label LABEL \\
           --out-dir OUT_DIR [--stage {fixed|geno_maf_only}] \\
           [--capture-snp-list FILE] [--overwrite]
@@ -111,7 +121,7 @@ done
 
 # --- item 7: strict enum validation, hard fail on any typo ---
 case "$PANEL" in A|B|C) ;; *) echo "FATAL: --panel must be A, B, or C, got '$PANEL'" >&2; exit 1 ;; esac
-case "$LIBTYPE" in shotgun|capture) ;; *) echo "FATAL: --library-type must be shotgun or capture, got '$LIBTYPE'" >&2; exit 1 ;; esac
+case "$LIBTYPE" in shotgun|capture|pooled_mixed) ;; *) echo "FATAL: --library-type must be shotgun, capture, or pooled_mixed, got '$LIBTYPE'" >&2; exit 1 ;; esac
 case "$TRACK" in TV|ALL) ;; *) echo "FATAL: --track must be TV or ALL, got '$TRACK'" >&2; exit 1 ;; esac
 case "$SENS" in primary|S1|S2|S3|S4) ;; *) echo "FATAL: --sensitivity must be one of primary/S1/S2/S3/S4, got '$SENS'" >&2; exit 1 ;; esac
 case "$STAGE" in fixed|geno_maf_only) ;; *) echo "FATAL: --stage must be fixed or geno_maf_only, got '$STAGE'" >&2; exit 1 ;; esac

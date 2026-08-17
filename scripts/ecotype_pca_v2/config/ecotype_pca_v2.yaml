@@ -125,5 +125,11 @@ inputs:
   # server. Do not guess a path here. See 00_validate_inputs.py's BLOCKED
   # report for the exact check.
   capture_bait_bed: null
+  # Added 2026-08-17: the IRGSP reference FASTA the ancient BAMs
+  # (*.besthit_oryza.irgsp.bam) were mapped against, confirmed from
+  # scripts/server_originals/mapping.sh's own REF= line (not guessed).
+  # Used by 23_validate_snp_ref_against_fasta.py to check that each panel's
+  # declared REF allele actually matches the reference genome sequence.
+  irgsp_reference_fasta: /home/scratch/yinmt202607/db/asian_rice_panel_index/irgsp.fa
 
 results_v2_root: /home/scratch/yinmt202607/gene/results/ecotype_pca_v2
