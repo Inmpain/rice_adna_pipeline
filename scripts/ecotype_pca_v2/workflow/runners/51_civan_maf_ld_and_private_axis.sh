@@ -4,7 +4,6 @@ set -euo pipefail
 : "${RICE_PCA_REPO_ROOT:?}"; : "${RICE_PCA_CONFIG:?}"; : "${RICE_PCA_ATTEMPT_DIR:?}"
 : "${CIVAN_UNION_SITES:?path to ancient_union_sites.tsv from 19_survey_ancient_coverage.py}"
 : "${CIVAN_UNION_SITES_TV:?path to ancient_union_sites.TV.tsv from 20_filter_coverage_sites_to_transversions.py}"
-: "${CIVAN_REFERENCE_KEEP:?panel C reference/axis-builder keep-list, from 06_build_reference_sample_set.py --panel C}"
 : "${CIVAN_REFERENCE_FASTA:?path to the IRGSP reference FASTA the ancient BAMs were mapped against}"
 : "${CIVAN_ANCIENT_SAMPLES:?space-separated list of ancient sample IDs}"
 cd "$RICE_PCA_REPO_ROOT"
@@ -24,7 +23,7 @@ PY
 )"
 
 OUT="$RICE_PCA_ATTEMPT_DIR"
-mkdir -p "$OUT/plink_input_staging" "$OUT/plink" "$OUT/maf_ld" "$OUT/SHARED/TV" "$OUT/SHARED/ALL" "$OUT/PRIVATE"
+mkdir -p "$OUT/plink_input_staging" "$OUT/plink" "$OUT/reference_sets" "$OUT/maf_ld" "$OUT/SHARED/TV" "$OUT/SHARED/ALL" "$OUT/PRIVATE"
 
 echo "=== Step 0: REF-vs-FASTA validation (once, against the raw Civan panel) ==="
 python3 scripts/ecotype_pca_v2/23_validate_snp_ref_against_fasta.py \
@@ -45,6 +44,17 @@ ln -sf "$PANEL_GENO" "$STAGE_DIR/${PANEL_PREFIX}.eigenstratgeno"
 bash scripts/ecotype_pca_v2/02_convert_eigenstrat_for_plink.sh \
   --dir "$STAGE_DIR" --prefix "$PANEL_PREFIX" --out-dir "$OUT/plink"
 CIVAN_BFILE="$OUT/plink/${PANEL_PREFIX}.plink"
+
+echo "=== Step 1b: build panel C reference/axis-builder keep-list (real FID from the .fam just produced) ==="
+# convertf's familynames: NO assigns sequential-index FIDs in the real
+# .fam, not the sample ID string -- 06_build_reference_sample_set.py must
+# be given --fam-file to write a keep-list plink2 --keep can actually
+# match, or every row silently fails to match and plink2 keeps 0 samples.
+python3 scripts/ecotype_pca_v2/06_build_reference_sample_set.py \
+  --config "$RICE_PCA_CONFIG" --panel C --label civan \
+  --ind-file "$PANEL_IND" --fam-file "${CIVAN_BFILE}.fam" \
+  --out-dir "$OUT/reference_sets"
+CIVAN_REFERENCE_KEEP="$OUT/reference_sets/civan.reference_samples.keep"
 
 SUMMARY="$OUT/stage51_summary.tsv"
 printf 'section\ttrack\tsample\ttechnical_execution\ttechnical_note\tcallable_n\n' > "$SUMMARY"
