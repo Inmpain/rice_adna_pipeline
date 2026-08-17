@@ -132,6 +132,10 @@ Phase 0 还需产出每 panel 的**翻链清单**（哪些位点要 REF/ALT 互�
 - 720：混合 → 把 605,270 个 `match_alt` 位点的 SNP ID 落成一张清单，Phase B 用它
   把现代矩阵和 pileupCaller 输出统一到 irgsp 方向。
 
+**Phase 0 完成（2026-08-17）**：3K / Civán = 干净整体反标；720 = 混合方向，
+`720.flip.snplist` 已生成（605,270 个翻链位点，路径
+`/home/scratch/yinmt202607/gene/results/ecotype_pca_v2/phase0/720.flip.snplist`）。
+
 ---
 
 ## 2. Phase A — marker 准备（漏斗：参考覆盖 → panel 交集 → MAF → LD，ALL track）
