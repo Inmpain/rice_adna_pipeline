@@ -243,6 +243,30 @@ Phase A 产出 marker 集后，**只有 0 位点的样本/面板才天然跳过*
 
 位点多少只记录在统计表里，不据此丢弃。
 
+### 2.5 Phase A 执行顺序（三面板）
+
+每个面板通用 10 步：
+
+1. `02` EIGENSTRAT → PLINK
+2. 锁 A2=irgsp（`make_irgsp_ref_list.py` + `plink --a2-allele ... 2 1 --keep-allele-order`）
+3. `06` reference keep-list
+4. `07 --stage geno_maf_only --track ALL` MAF 过滤
+5. `07` 之后再锁一次 A2=irgsp
+6. `19` coverage 普查
+7. `25` MAF ∩ coverage 交集
+8. `27` 共享轴 LD
+9. `29` PLINK → EIGENSTRAT（私有轴 / pileupCaller）
+10. 每面板 `*.coverage_funnel.tsv`
+
+面板安排：
+
+- 3K：1–10 全跑，最重（29M），先启动。
+- 720：1–10 全跑（6.7M，混合方向）。
+- Civán：复用 6（coverage 普查）、3（595 keep）、4/8（1015 marker 清单），
+  补 1/2/5/9 的矩阵归一化。
+
+3K 和 720 相互独立，可并行；Civán 放最后补齐。
+
 ---
 
 ## 3. Phase B — pileupCaller 替换（风险最大）
