@@ -203,23 +203,21 @@ Phase A 产出 marker 集后，**只有 0 位点的样本/面板才天然跳过*
 
 ### 3.1 前置：安装 sequenceTools（pileupCaller）环境（服务器侧，用户执行）
 
-先建一个只跑 pileupCaller 的最小 conda/mamba 环境：
+新环境只装 `sequencetools`；`samtools` 走 `module load`，`plink` 用 base：
 
 ```bash
-# 建议用 mamba（更快）；没有 mamba 就把 mamba 换成 conda
-mamba create -n sequencetools -c conda-forge -c bioconda sequencetools samtools plink
-
+mamba create -n sequencetools
 mamba activate sequencetools
-which pileupCaller
+mamba install bioconda::sequencetools
+
+module load samtools
+which pileupCaller samtools plink
 pileupCaller -h
-samtools --version
-plink --version
 ```
 
-说明：`pileupCaller` 来自 `sequencetools`，但它的输入由 `samtools mpileup` 产生，
-输出 PLINK 后还要用 `plink` 对齐 REF/ALT，所以这三个最好放同一个环境里，避免 SLURM
-作业里 PATH 不一致。若系统已有 `samtools`/`plink` 且作业里能同时 activate，则只装
-`sequencetools` 也可以；但至少 `pileupCaller -h` 必须能正常打印 usage。
+SLURM 作业里同样按这个顺序：先 `mamba activate sequencetools`，再
+`module load samtools`，并确认 `plink` 仍能解析（如果 activate 后 `plink` 不见了，
+就记 base 里 `plink` 的绝对路径，或改用 `module load plink`）。
 
 ### 3.2 新增两个调用脚本
 
