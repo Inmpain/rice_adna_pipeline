@@ -28,6 +28,21 @@
 
 ---
 
+## 0.1 术语：marker 就是“位点”
+
+本计划里的 **marker / marker 集 / fixed marker list** 和“**位点 / SNP 位点集**”是
+同一个东西：一个 marker 就是一个基因组 SNP 位点（chr + pos + REF/ALT），marker 集
+就是一批这样的位点的列表（仓库里叫 `*.fixed.snplist`）。
+
+- “共享 marker 集” = 共享轴实际要用的那一批位点。
+- “MAF ∩ coverage 的交集当共享 marker 集用” = 把“过了 MAF 且被古样本覆盖到的
+  位点”这一批，作为共享轴要用的位点集。
+
+所以它和“有覆盖的位置”不是两个东西：先有一堆候选位点，用 MAF 和 coverage 两个
+条件筛一遍，筛剩下的那批位点就叫 marker 集。
+
+---
+
 ## 1. 先厘清：共享轴 vs 私有轴
 
 用户的问题“3K 的 coverage-first 是给私有轴降规模用；那共享轴的位点不是这个有
@@ -35,7 +50,7 @@ coverage 的部分吗”对应如下：
 
 | | 共享轴（辅助分析） | 私有轴（主分析） |
 |---|---|---|
-| marker 集 | 现代面板 **MAF → ancient-union coverage 交集 →（LD 待确认）** | **MAF → 每样本自己覆盖的位点**（3K 靠这步把 29M 降到可控） |
+| marker 集 | 现代面板 **MAF → ancient-union coverage 交集 → LD（覆盖候选内剪枝）** | **MAF → 每样本自己覆盖的位点**（3K 靠这步把 29M 降到可控） |
 | 坐标 | 16 个古样本投影到**同一套**冻结坐标轴 | 每样本独立子集、独立坐标轴，**样本间不可比** |
 | 出图 | 全部样品一张图（`26_plot_pc_pairs.sh`） | 每样品一格（`plot_pca_projection.py --evec-glob`） |
 | coverage 交集 | **是**，MAF 之后交 ancient union（16 样本任一覆盖） | **是**，MAF 之后交每样本自己的覆盖位点 |
@@ -96,7 +111,7 @@ coverage 普查：`19_survey_ancient_coverage.py --panel-snp <该面板原始 .s
 
 - **共享轴**：`21_extract_fixed_snplist.py` + `25_intersect_snplists.py` 交
   “MAF 过的位点 ∩ ancient union”，得到共享候选；
-  **是否再 `27_ancient_coverage_first_ld_prune.py` 做 LD 本轮待确认**（见第 8 节）。
+  然后再 `27_ancient_coverage_first_ld_prune.py` 在覆盖候选内做 LD（本轮确认做）。
 - **私有轴**：交 “MAF 过的位点 ∩ 每样本自己的覆盖位点”，得到 per-sample 子集
   （不做 LD）；3K 正是靠这一步把 29M 降到可控，再往下 per-sample 子集筛选。
 
@@ -118,13 +133,31 @@ Phase A 结束时，每个面板产出一张覆盖度漏斗表（建议文件名
 
 说明：
 
-- 第 1 项“在参考基因组上覆盖的”是**全基因组覆盖 breadth**，`summarize_panel_overlap.py`
-  已经能按样本输出；若你要的是 16 样本 union，Phase A 需要加一个很小的聚合步骤
-  （把 16 个样本的覆盖位置取并集），否则就先按每样本列。
+- 第 1 项“在参考基因组上覆盖的”是**全基因组覆盖 breadth**。主表建议用 **16 样本
+  union（一个数字）**，这样和后面第 2–5 项（union 口径）能连成一个漏斗；需要看
+  每个样本自己的覆盖时，再附一张 per-sample 明细表（`summarize_panel_overlap.py`
+  每样本已能出 `genome_positions_low/high`，`19` 的 `per_sample_coverage_summary.tsv`
+  则给出每样本 panel 覆盖数）。
 - 第 2–5 项基本都来自现有脚本产出（19 / 07 / 25 / 27），Phase A 只需要一个小汇总脚本
   把它们拼成一张 `*.coverage_funnel.tsv`，不做新的重计算。
 - 这张表同时能看到共享轴（union）和私有轴（per-sample）两个口径，但主表按
   “每面板一行”给；若需要 16 样本明细，直接用 `19` 的 `per_sample_coverage_summary.tsv`。
+
+### 2.4 位点数下限 gate（位点太少就跳过 Phase B）
+
+Phase A 产出 marker 集后，先看数量，再决定是否往下做 `pileupCaller` /
+pseudo-haploid / PCA：
+
+- **共享轴**：若 `MAF ∩ coverage → LD` 之后的 marker 数低于阈值，该面板共享轴标记为
+  `INSUFFICIENT_MARKERS`，本轮不做后续 calling/PCA，只在统计表里留档。
+- **私有轴**：若某样本 per-sample 覆盖子集低于阈值，该样本该面板跳过 calling。
+
+阈值建议：
+
+- 共享 marker 集下限沿用 config 现有 `information_flags.very_low = 200`。
+- 私有轴每样本 callable 沿用 Stage 50 的 `< 50 = descriptive_only` 口径。
+
+具体数字待用户确认后再写死。
 
 ---
 
@@ -290,8 +323,8 @@ plink --bfile {prefix} \
 3. MAPQ/BaseQ 用仓库冻结 `30/30`，还是改 Snakefile 的 `25/25`。
 4. Phase B 输出对接：确认“写一层 PLINK→calls 转换、下游不动”这个方案。
 5. Civán 的 `geno_maf_filtered`（ALL）如果 51 已产出，是否直接复用。
-6. 共享轴在 MAF → coverage 交集之后，**本轮是否还要做 LD（`27`）**，还是按你
-   原计划“先不做 LD”直接跳过、把交集结果当共享 marker 集用。
+6. 共享轴 LD 已确认本轮做（`27`），但**位点数下限 gate 的具体阈值**待确认：
+   共享 marker 集下限是否就用 `very_low=200`，私有轴每样本 callable 是否用 `<50`。
 
 ---
 
