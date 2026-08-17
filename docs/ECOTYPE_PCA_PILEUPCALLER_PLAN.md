@@ -201,16 +201,25 @@ Phase A 产出 marker 集后，**只有 0 位点的样本/面板才天然跳过*
 
 ## 3. Phase B — pileupCaller 替换（风险最大）
 
-### 3.1 前置检查（服务器侧，用户执行）
+### 3.1 前置：安装 sequenceTools（pileupCaller）环境（服务器侧，用户执行）
+
+先建一个只跑 pileupCaller 的最小 conda/mamba 环境：
 
 ```bash
+# 建议用 mamba（更快）；没有 mamba 就把 mamba 换成 conda
+mamba create -n sequencetools -c conda-forge -c bioconda sequencetools samtools plink
+
+mamba activate sequencetools
 which pileupCaller
 pileupCaller -h
 samtools --version
 plink --version
 ```
 
-`pileupCaller` 没装则 Phase B 先阻塞，需要先装 `sequenceTools`。
+说明：`pileupCaller` 来自 `sequencetools`，但它的输入由 `samtools mpileup` 产生，
+输出 PLINK 后还要用 `plink` 对齐 REF/ALT，所以这三个最好放同一个环境里，避免 SLURM
+作业里 PATH 不一致。若系统已有 `samtools`/`plink` 且作业里能同时 activate，则只装
+`sequencetools` 也可以；但至少 `pileupCaller -h` 必须能正常打印 usage。
 
 ### 3.2 新增两个调用脚本
 
