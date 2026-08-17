@@ -79,26 +79,26 @@ coverage 的部分吗”对应如下：
 执行命令（服务器侧，用户执行）：
 
 ```bash
-mkdir -p ~/phase0 && cd ~/phase0
+WORK=/home/scratch/yinmt202607/gene/results/ecotype_pca_v2/phase0
+mkdir -p "$WORK"
+cd "$WORK"
 BASE="https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/ecotype-pca-pileupcaller/scripts/ecotype_pca_v2"
 curl -fL -O "$BASE/23_validate_snp_ref_against_fasta.py"
 curl -fL -O "$BASE/fixed_projection_lib.py"
-
-mkdir -p /home/scratch/yinmt202607/gene/results/ecotype_pca_v2/phase0
 
 # Panel A 3K
 python3 23_validate_snp_ref_against_fasta.py \
   --snp /home/scratch/yinmt202607/db/29M_3k/NB_final_snp.snp \
   --fasta /home/scratch/yinmt202607/db/asian_rice_panel_index/irgsp.fa \
   --contig-format chr%02d \
-  --out /home/scratch/yinmt202607/gene/results/ecotype_pca_v2/phase0/3k.ref_vs_fasta.report.tsv
+  --out "$WORK/3k.ref_vs_fasta.report.tsv"
 
 # Panel B 720
 python3 23_validate_snp_ref_against_fasta.py \
   --snp /home/scratch/yinmt202607/db/6.7M_720/asn720.6m.snp \
   --fasta /home/scratch/yinmt202607/db/asian_rice_panel_index/irgsp.fa \
   --contig-format chr%02d \
-  --out /home/scratch/yinmt202607/gene/results/ecotype_pca_v2/phase0/720.ref_vs_fasta.report.tsv
+  --out "$WORK/720.ref_vs_fasta.report.tsv"
 ```
 
 Civán 已由 51 runner Step 0 跑过，报告复用；3K/720 按上面各跑一次。
