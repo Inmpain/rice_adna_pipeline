@@ -20,8 +20,9 @@
   替换：
   - 共享轴：`scripts/ecotype_pca_v2/10_call_ancient_fixed_markers.py`
   - 私有轴：`scripts/ecotype_pca/pseudo_haploid_call.py`
-- 位点筛选顺序固定为 **MAF → coverage 交集**；共享轴和私有轴**都**要做 coverage
-  交集（共享轴交 ancient union，私有轴交每样本自己的覆盖位点）。
+- 覆盖位点的统计漏斗顺序固定为
+  **参考基因组覆盖 → panel 交集 → MAF → LD**；“panel”这里指 **UNK 剔除个体后、
+  还没做 MAF/LD 的原始 panel**（位点全集）。
 - 绘图加两项标注：**覆盖位点数**、**PC 解释度**；**去掉红星 highlight**。
 - 伪单倍体调用流程参考用户提供的 `Snakefile.pseudohaploid.from_panel`（本文件
   末尾附其关键参数映射）。
@@ -55,8 +56,9 @@ coverage 的部分吗”对应如下：
 | 出图 | 全部样品一张图（`26_plot_pc_pairs.sh`） | 每样品一格（`plot_pca_projection.py --evec-glob`） |
 | coverage 交集 | **是**，MAF 之后交 ancient union（16 样本任一覆盖） | **是**，MAF 之后交每样本自己的覆盖位点 |
 
-结论：两个轴都要做 coverage 交集，顺序统一是 **MAF → coverage**。区别只在“交谁的
-coverage”：共享轴交 ancient union，私有轴交每样本自己的覆盖位点。
+结论：两个轴都要做 coverage 交集，统计漏斗统一是
+**参考基因组覆盖 → panel（UNK 剔除后、未做 MAF/LD）交集 → MAF → LD**。
+区别只在“交谁的 coverage”：共享轴交 ancient union，私有轴交每样本自己的覆盖位点。
 
 ---
 
@@ -88,9 +90,10 @@ coverage”：共享轴交 ancient union，私有轴交每样本自己的覆盖�
 
 ---
 
-## 2. Phase A — marker 准备（顺序：MAF → coverage 交集，ALL track）
+## 2. Phase A — marker 准备（漏斗：参考覆盖 → panel 交集 → MAF → LD，ALL track）
 
-目标：三个面板统一先过 MAF=0.01，再和 ancient coverage 取交集，得到一个可控、
+目标：先看古样本在参考基因组上覆盖了多少位点，再和 **UNK 剔除个体后、未做 MAF/LD
+的 panel** 取交集，然后依次看交集位点里过 MAF、过 LD 的数量，最终得到一个可控、
 且一定被古样本覆盖到的位点集合，供 `pileupCaller` / 私有轴 / 共享轴使用。
 
 ### 2.1 三个面板统一 MAF-only（复用现成脚本，不改代码）
@@ -129,7 +132,8 @@ coverage”：共享轴交 ancient union，私有轴交每样本自己的覆盖�
 
 ### 2.2 coverage 交集（共享轴和私有轴都做）
 
-coverage 普查：`19_survey_ancient_coverage.py --panel-snp <该面板原始 .snp> --bam SAMPLE=BAM ×16`
+coverage 普查（对**未处理 panel 的位点全集**做）：`19_survey_ancient_coverage.py
+--panel-snp <该面板原始 .snp> --bam SAMPLE=BAM ×16`
 → `ancient_union_sites.tsv`（每个位点被哪些古样本覆盖，samples_covered 列）。
 
 - **Civán**：这份 `ancient_union_sites.tsv` 已有（Stage 50 产出），可复用。
@@ -154,7 +158,7 @@ Phase A 结束时，每个面板产出一张覆盖度漏斗表（建议文件名
 | # | 指标 | 定义 | 来源 |
 |---|---|---|---|
 | 1 | 参考基因组覆盖位点 | 古样本 read 在 IRGSP 参考基因组上覆盖到的位置数（全基因组 breadth） | `summarize_panel_overlap.py` 每样本 `genome_positions_low` / `genome_positions_high` |
-| 2 | panel 覆盖位点 | 参考覆盖 ∩ 该 panel SNP 位点 | `19_survey_ancient_coverage.py` → `ancient_union_sites.tsv` 行数（union）；per-sample 见其 `per_sample_coverage_summary.tsv` |
+| 2 | panel 覆盖位点 | 参考覆盖 ∩ **未处理 panel**（UNK 剔除后、未做 MAF/LD）的 SNP 位点 | `19_survey_ancient_coverage.py` → `ancient_union_sites.tsv` 行数（union）；per-sample 见其 `per_sample_coverage_summary.tsv` |
 | 3 | panel 覆盖但 MAF 未过 | 第 2 项中 MAF < 0.01 的位点 | = (2) − (4) |
 | 4 | panel 覆盖且 MAF 过 | 第 2 项 ∩ MAF-pass 位点 | `25_intersect_snplists.py`（MAF 过 ∩ ancient union） |
 | 5 | panel 覆盖 + MAF 过 + LD 过 | 第 4 项中再经 LD 剪枝 | `27_ancient_coverage_first_ld_prune.py`（若本轮做 LD）或 07 `fixed` 产物 |
