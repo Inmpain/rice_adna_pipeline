@@ -103,6 +103,29 @@ coverage 普查：`19_survey_ancient_coverage.py --panel-snp <该面板原始 .s
 最后用 `29_convert_plink_to_eigenstrat.sh` 把过滤后的 PLINK 转回 EIGENSTRAT，
 供 `pileupCaller` / 私有轴（v1 `run_sample_panel_pca.sh` 只认 EIGENSTRAT）使用。
 
+### 2.3 Phase A 统计漏斗（每面板一份 coverage 统计）
+
+Phase A 结束时，每个面板产出一张覆盖度漏斗表（建议文件名
+`*.coverage_funnel.tsv`），口径如下：
+
+| # | 指标 | 定义 | 来源 |
+|---|---|---|---|
+| 1 | 参考基因组覆盖位点 | 古样本 read 在 IRGSP 参考基因组上覆盖到的位置数（全基因组 breadth） | `summarize_panel_overlap.py` 每样本 `genome_positions_low` / `genome_positions_high` |
+| 2 | panel 覆盖位点 | 参考覆盖 ∩ 该 panel SNP 位点 | `19_survey_ancient_coverage.py` → `ancient_union_sites.tsv` 行数（union）；per-sample 见其 `per_sample_coverage_summary.tsv` |
+| 3 | panel 覆盖但 MAF 未过 | 第 2 项中 MAF < 0.01 的位点 | = (2) − (4) |
+| 4 | panel 覆盖且 MAF 过 | 第 2 项 ∩ MAF-pass 位点 | `25_intersect_snplists.py`（MAF 过 ∩ ancient union） |
+| 5 | panel 覆盖 + MAF 过 + LD 过 | 第 4 项中再经 LD 剪枝 | `27_ancient_coverage_first_ld_prune.py`（若本轮做 LD）或 07 `fixed` 产物 |
+
+说明：
+
+- 第 1 项“在参考基因组上覆盖的”是**全基因组覆盖 breadth**，`summarize_panel_overlap.py`
+  已经能按样本输出；若你要的是 16 样本 union，Phase A 需要加一个很小的聚合步骤
+  （把 16 个样本的覆盖位置取并集），否则就先按每样本列。
+- 第 2–5 项基本都来自现有脚本产出（19 / 07 / 25 / 27），Phase A 只需要一个小汇总脚本
+  把它们拼成一张 `*.coverage_funnel.tsv`，不做新的重计算。
+- 这张表同时能看到共享轴（union）和私有轴（per-sample）两个口径，但主表按
+  “每面板一行”给；若需要 16 样本明细，直接用 `19` 的 `per_sample_coverage_summary.tsv`。
+
 ---
 
 ## 3. Phase B — pileupCaller 替换（风险最大）
