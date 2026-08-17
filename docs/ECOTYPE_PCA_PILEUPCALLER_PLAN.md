@@ -20,7 +20,8 @@
   替换：
   - 共享轴：`scripts/ecotype_pca_v2/10_call_ancient_fixed_markers.py`
   - 私有轴：`scripts/ecotype_pca/pseudo_haploid_call.py`
-- 3K 的 ancient-coverage-first **只用于私有轴降规模**；共享轴不使用 coverage 限定位点。
+- 位点筛选顺序固定为 **MAF → coverage 交集**；共享轴和私有轴**都**要做 coverage
+  交集（共享轴交 ancient union，私有轴交每样本自己的覆盖位点）。
 - 绘图加两项标注：**覆盖位点数**、**PC 解释度**；**去掉红星 highlight**。
 - 伪单倍体调用流程参考用户提供的 `Snakefile.pseudohaploid.from_panel`（本文件
   末尾附其关键参数映射）。
@@ -34,20 +35,20 @@ coverage 的部分吗”对应如下：
 
 | | 共享轴（辅助分析） | 私有轴（主分析） |
 |---|---|---|
-| marker 集 | 现代参考面板 MAF+LD（ALL） | 每个古样本**自己覆盖到的位点**（本轮再加 MAF-only 预筛；3K 再加 coverage 交集降规模） |
+| marker 集 | 现代面板 **MAF → ancient-union coverage 交集 →（LD 待确认）** | **MAF → 每样本自己覆盖的位点**（3K 靠这步把 29M 降到可控） |
 | 坐标 | 16 个古样本投影到**同一套**冻结坐标轴 | 每样本独立子集、独立坐标轴，**样本间不可比** |
 | 出图 | 全部样品一张图（`26_plot_pc_pairs.sh`） | 每样品一格（`plot_pca_projection.py --evec-glob`） |
-| 是否 coverage 限定 | **否**，与 ancient coverage 无关 | **是**，只保留该样本覆盖的位点 |
+| coverage 交集 | **是**，MAF 之后交 ancient union（16 样本任一覆盖） | **是**，MAF 之后交每样本自己的覆盖位点 |
 
-结论：coverage 交集只作用于**私有轴**；共享轴的 marker 集仍是“现代面板 MAF+LD”，
-不是 coverage 子集。
+结论：两个轴都要做 coverage 交集，顺序统一是 **MAF → coverage**。区别只在“交谁的
+coverage”：共享轴交 ancient union，私有轴交每样本自己的覆盖位点。
 
 ---
 
-## 2. Phase A — 私有轴 marker 准备（MAF-only，ALL，先不做 LD）
+## 2. Phase A — marker 准备（顺序：MAF → coverage 交集，ALL track）
 
-目标：把 3K 的 ~2900 万位点降到一个可控规模，供 `pileupCaller` / 私有轴使用；
-720 和 Civán 也统一走同一套 MAF-only 预筛。
+目标：三个面板统一先过 MAF=0.01，再和 ancient coverage 取交集，得到一个可控、
+且一定被古样本覆盖到的位点集合，供 `pileupCaller` / 私有轴 / 共享轴使用。
 
 ### 2.1 三个面板统一 MAF-only（复用现成脚本，不改代码）
 
@@ -83,25 +84,24 @@ coverage 的部分吗”对应如下：
 说明：manifest 是 TSV 汇总（不是 PLINK 格式），内含 `after_site_missingness`
 和 `after_MAF` 两个独立计数。
 
-### 2.2 3K 额外一步：coverage-first 降规模（只给私有轴）
+### 2.2 coverage 交集（共享轴和私有轴都做）
 
-因为 3K 是 ~2900 万位点，直接进入 per-sample 子集会 OOM/龟速。处理顺序：
+coverage 普查：`19_survey_ancient_coverage.py --panel-snp <该面板原始 .snp> --bam SAMPLE=BAM ×16`
+→ `ancient_union_sites.tsv`（每个位点被哪些古样本覆盖，samples_covered 列）。
 
-1. `19_survey_ancient_coverage.py` 对 **3K 原始 `.snp`** 单独跑一次 coverage 普查：
-   - `--panel-snp NB_final_snp.snp`
-   - `--bam SAMPLE=BAM` × 16
-   - 产出 `ancient_union_sites.tsv`（每个位点被哪些古样本覆盖）
-   - **注意**：Civán 已有的 coverage 文件是针对 Civán 自己的 2,365,188 位点
-     算的，**不能**直接套给 3K。
-2. `25_intersect_snplists.py` 取交集：
-   - 一份 snplist = 2.1 的 `geno_maf_filtered` 位点（`cut -f2 ... .bim`）
-   - 一份 snplist = `ancient_union_sites.tsv` 的 snp_id（`21_extract_fixed_snplist.py`）
-   - 产出：3K 私有轴候选 snplist。
-3. 用 `29_convert_plink_to_eigenstrat.sh` 把过滤后的 PLINK 转回 EIGENSTRAT，
-   供 `pileupCaller` / 私有轴（v1 `run_sample_panel_pca.sh` 只认 EIGENSTRAT）使用。
+- **Civán**：这份 `ancient_union_sites.tsv` 已有（Stage 50 产出），可复用。
+- **3K / 720**：需要各自跑一次（Civán 那份是针对 Civán 自己位点算的，不能直接套）。
 
-720 和 Civán 不做 coverage-first：720 本身约 6.7M，Civán 约 2.37M，规模可控；
-它们的私有轴仍按“全面板位点 + 每样本自己覆盖到的位点”走，不额外用 coverage 交集。
+交集后的两条路：
+
+- **共享轴**：`21_extract_fixed_snplist.py` + `25_intersect_snplists.py` 交
+  “MAF 过的位点 ∩ ancient union”，得到共享候选；
+  **是否再 `27_ancient_coverage_first_ld_prune.py` 做 LD 本轮待确认**（见第 8 节）。
+- **私有轴**：交 “MAF 过的位点 ∩ 每样本自己的覆盖位点”，得到 per-sample 子集
+  （不做 LD）；3K 正是靠这一步把 29M 降到可控，再往下 per-sample 子集筛选。
+
+最后用 `29_convert_plink_to_eigenstrat.sh` 把过滤后的 PLINK 转回 EIGENSTRAT，
+供 `pileupCaller` / 私有轴（v1 `run_sample_panel_pca.sh` 只认 EIGENSTRAT）使用。
 
 ---
 
@@ -240,8 +240,8 @@ plink --bfile {prefix} \
 | 文件 | 工具 | 说明 |
 |---|---|---|
 | 三面板 `geno_maf_filtered` | 07 `--stage geno_maf_only` | Civán 的 ALL 份可能已由 51 跑过，需确认后复用 |
-| 3K coverage 普查 | 19 `--panel-snp NB_final_snp.snp` | 新，3K 位点专用 |
-| 3K 私有轴候选 snplist | 25 交集 | 新 |
+| 3K/720 coverage 普查 | 19 `--panel-snp <panel>.snp` | 新（Civán 复用 Stage 50 的） |
+| 3K/720 coverage 交集 snplist | 25 交集 | 新（共享轴交 union；私有轴交 per-sample） |
 | 私有轴 EIGENSTRAT | 29 | 新 |
 | pileupCaller 转换层输出 `.calls.txt/.call_sites.tsv/.call_report.tsv` | 新脚本 | Phase B |
 | 改版后的 PC 图 | plot 脚本 | Phase C |
@@ -267,6 +267,8 @@ plink --bfile {prefix} \
 3. MAPQ/BaseQ 用仓库冻结 `30/30`，还是改 Snakefile 的 `25/25`。
 4. Phase B 输出对接：确认“写一层 PLINK→calls 转换、下游不动”这个方案。
 5. Civán 的 `geno_maf_filtered`（ALL）如果 51 已产出，是否直接复用。
+6. 共享轴在 MAF → coverage 交集之后，**本轮是否还要做 LD（`27`）**，还是按你
+   原计划“先不做 LD”直接跳过、把交集结果当共享 marker 集用。
 
 ---
 
