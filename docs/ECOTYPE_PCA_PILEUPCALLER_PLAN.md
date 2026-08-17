@@ -201,23 +201,30 @@ Phase A 产出 marker 集后，**只有 0 位点的样本/面板才天然跳过*
 
 ## 3. Phase B — pileupCaller 替换（风险最大）
 
-### 3.1 前置：安装 sequenceTools（pileupCaller）环境（服务器侧，用户执行）
+### 3.1 前置：pileupCaller / plink / samtools 环境（服务器侧，已就绪）
 
-新环境只装 `sequencetools`；`samtools` 走 `module load`，`plink` 用 base：
+最终可用组合（2026-08-17 已实测）：
+
+- **pileupCaller**：`~/software/pileupCaller-linux`（GitHub release **v1.5.3.1** 二进制，
+  可正常运行）。
+  - 坑：Bioconda `sequencetools=1.6.0.0` 在这台服务器上启动即 segfault；
+    1.6.0.0 的 `pileupCaller-Linux-X64` 需要 `GLIBC_2.34`，服务器 glibc 更老。
+    所以用 **v1.5.3.1 的 `pileupCaller-linux`**，所需 flag 都在：
+    `--randomHaploid`、`--seed`、`-f/--snpFile`、`-p/--plinkOut`、
+    `--sampleNames`、`--samplePopName`。
+- **plink**：装进现有 `snakemake` 环境：`mamba install bioconda::plink`（1.90b7.7）。
+- **samtools**：`module load samtools`。
+
+SLURM 作业里按这个顺序准备环境：
 
 ```bash
-mamba create -n sequencetools
-mamba activate sequencetools
-mamba install bioconda::sequencetools
-
-module load samtools
-which pileupCaller samtools plink
-pileupCaller -h
+mamba activate snakemake        # 提供 plink
+module load samtools            # 提供 samtools mpileup
+PILEUP_CALLER=~/software/pileupCaller-linux
+which "$PILEUP_CALLER" plink samtools
 ```
 
-SLURM 作业里同样按这个顺序：先 `mamba activate sequencetools`，再
-`module load samtools`，并确认 `plink` 仍能解析（如果 activate 后 `plink` 不见了，
-就记 base 里 `plink` 的绝对路径，或改用 `module load plink`）。
+（`pileupCaller-linux` 用绝对路径即可，也可以软链到 `~/bin`。）
 
 ### 3.2 新增两个调用脚本
 
@@ -277,6 +284,14 @@ plink --bfile {prefix} \
 - **seed 语义**：`pileupCaller --randomHaploid --seed` 是“每样本一个稳定 seed”，
   与现 pysam 版“每站点一个 seed”不同；本轮 ALL-only、不再要求 TV/ALL 同抽，
   所以这个差异可接受，但要在 `.call_report.tsv` 里记清 seed 合同。
+- **染色体命名**：pileupCaller 要求 SNP 文件与 pileup 输入都按**数字染色体**排序
+  （内部把 X→23 / Y→24 / MT→90；非人类数据建议把 contig 名转成数字）。水稻是
+  `chr01`–`chr12`，需要确认 BAM 与 `.snp` 的 contig 命名一致（是否都去 `chr`、
+  是否补零），否则会因排序/命名对不上而报错或静默错位。
+- **自动翻链**：pileupCaller 会自动检查 SNP 文件的 REF/ALT 是否相对参考基因组反了，
+  反了会自动翻转 genotype——正好对应 Civán 的整体反标；但我们仍要用
+  `23_validate_snp_ref_against_fasta.py` 的结果先确认每个 panel 的方向，再决定是否
+  依赖这个自动翻转。
 - **spike 先行**：先 1 个样本 × 1 个面板（建议用 Civán 的 1015-marker 集）跑通
   `mpileup | pileupCaller → 转换 → merge → smartpca`，确认结果说得通，再铺开到
   16 样本 × 3 面板，不要一上来批量换。
