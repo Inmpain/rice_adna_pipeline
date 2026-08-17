@@ -111,13 +111,15 @@ Civán 已由 51 runner Step 0 跑过，报告复用；3K/720 按上面各跑一
   记档，决定是否在 pileupCaller `.snp` / `--a2-allele` 层面对齐。
 - **FATAL**：散乱不一致 → 先停，查数据。
 
-当前状态：
+当前状态（Phase 0 已跑，2026-08-17）：
 
-- **Civán**：51 runner 的 Step 0 已跑过，确认是**系统性整体反标**（REF↔ALT 互换）。
-  这个反标对**旧 pysam 伪单倍体**是“内部自洽、无害”（panel 矩阵和古样本都读同一份
-  `.snp` 列）；但对 **pileupCaller 不无害**——见下方 3.4。
-- **3K / 720**：都还没跑过，需要新跑；720 的 REF/ALT 方向在
-  `ECOTYPE_PCA_PANEL_QC_DESIGN.md` 里被标为“最急、最不了解”。
+- **Civán**：`systematic_ref_alt_swap`（整体反标）。
+- **3K**：`systematic_ref_alt_swap`（29,635,224 / 29,635,224 全部 match ALT，干净整体反标）。
+- **720**：`inconsistent_requires_manual_review`（match_ref=6,164,430，
+  match_alt=605,270，true_mismatch=14，of 6,769,714）——不是干净反标，是混合方向，待查。
+
+结论：3K 和 Civán 都是**干净整体反标**，可一致处理（预交换 REF/ALT 或依赖
+pileupCaller 的自动翻链）；720 是**混合方向**，不能按全局 swap 处理，见 3.4。
 
 ---
 
