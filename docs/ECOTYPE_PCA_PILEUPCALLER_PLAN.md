@@ -147,6 +147,14 @@ coverage 普查（对**未处理 panel 的位点全集**做）：`19_survey_anci
 - **私有轴**：交 “MAF 过的位点 ∩ 每样本自己的覆盖位点”，得到 per-sample 子集
   （不做 LD）；3K 正是靠这一步把 29M 降到可控，再往下 per-sample 子集筛选。
 
+**coverage 一次计算、多处复用**：
+
+- 每个 panel 只跑一次 `19_survey_ancient_coverage.py`，扫一遍 16 个 BAM。
+- 之后共享轴（ancient union）、私有轴（每样本覆盖子集）、MAF 交集（25）、LD（27）、
+  以及 2.3 的漏斗统计，**全部复用这份 coverage 结果，不再重扫 BAM**。
+- 需要 `19` 额外持久化**每样本的覆盖位点清单**（目前只写了 union + per-sample
+  计数），这样私有轴也直接吃 survey，而不是从 calling 后的 `.call_sites.tsv` 反推。
+
 最后用 `29_convert_plink_to_eigenstrat.sh` 把过滤后的 PLINK 转回 EIGENSTRAT，
 供 `pileupCaller` / 私有轴（v1 `run_sample_panel_pca.sh` 只认 EIGENSTRAT）使用。
 
@@ -267,12 +275,17 @@ plink --bfile {prefix} \
 
 ## 4. Phase C — 绘图（加位点数 + PC 解释度，去红星）
 
-两个脚本都改：
+出图规格：
 
-- `scripts/ecotype_pca/plot_pca_projection.py`（私有轴，每样品一格）
-- `scripts/ecotype_pca_v2/26_plot_pc_pairs.sh`（共享轴，全部样品一张图）
+- **共享轴**：`26_plot_pc_pairs.sh`，16 样品同一坐标系、全部样品一张图，
+  PC1–PC10（5 对）。
+- **私有轴**：PC1–PC10 都要，且分两种图——
+  1. **16 样品组合 grid**：每个样品一格拼成一张大图
+     （`plot_pca_projection.py --evec-glob`），至少 PC1–PC2；如需其它 PC 对
+     同样按 5 对循环各出一张 grid。
+  2. **每样品单独 PC1–PC10**：每个样品跑 5 对（1/2、3/4、5/6、7/8、9/10）。
 
-改动点：
+两个脚本（`plot_pca_projection.py`、`26_plot_pc_pairs.sh`）都做以下改动：
 
 1. **PC 解释度**：从 smartpca 的 `.eval` 文件读取 eigenvalue，
    `解释度 = eigen_i / sum(eigen)`，写在轴标签或子图标题里。
