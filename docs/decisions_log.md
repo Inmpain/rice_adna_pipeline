@@ -103,3 +103,54 @@ ALL/TV分别输出，所有16个样本均要求完成技术calling；`technical_
 相关文件：`scripts/ecotype_pca_v2/19_survey_ancient_coverage.py`、
 `scripts/ecotype_pca_v2/20_filter_coverage_sites_to_transversions.py`、
 commit `29418bb`（普查脚本）、`66ec621`（TV后过滤脚本）。
+
+---
+
+## [发现] 2026-08-17：Civán panel `civan_snp.snp` 的REF/ALT两列相对IRGSP参考基因组被系统性标反，但不影响已有PCA结果
+
+**背景**：新增的 `23_validate_snp_ref_against_fasta.py`（搬自同实验室师兄
+`Snakefile.pseudohaploid.from_panel`的REF校验逻辑）首次对`civan_snp.snp`全量
+236万个位点跑，报`2365188/2365188`（100%）REF与IRGSP参考FASTA（
+`/home/scratch/yinmt202607/db/asian_rice_panel_index/irgsp.fa`）不匹配。
+
+**诊断**：逐条核对报告中的示例与`civan_snp.snp`自己的REF/ALT列，发现**每一条
+例子的FASTA真实碱基都精确等于声明的ALT列，从不是其他碱基**（例：位点
+1249，`civan_snp.snp`声明REF=C/ALT=A，FASTA chr01:1249实际为A）。236万个
+位点如果是坐标系/基因组版本对不上，应该是雜乱无规律地两边都对不上（纯随机
+大概仅25%-33%命中率），而不是100%精确地总是对上ALT这一列——这是**列递归
+头被整体标反**的签名，不是数据损坏、也不是基因组版本/坐标不一致（位置本身是
+对的，只是"哪个算REF、哪个算ALT"这个标签方向反了）。
+
+**为什么不会污染已有结果**：
+
+1. 现代595个axis builder的`.eigenstratgeno`矩阵是与`civan_snp.snp`同一次
+   VCF→plink2→convertf转换的兄弟文件，0/1/2编码本来就是"相对`civan_snp.snp`
+   自己声明的REF/ALT标签"来算的，与真实基因组无关，内部自洽（Stage 20那次
+   PC1+2=27.79%精确复现论文数字，就是这个自洽性的证据）。
+2. `10_call_ancient_fixed_markers.py`给古代样本call基因型时，拿BAM里的碱基
+   去比对`civan_snp.snp`自己的`record["ref"]`/`record["alt"]`字符串——**不是**
+   去比对真实FASTA。只要古代和现代两边用的是同一份`civan_snp.snp`的标签空间，
+   0/2编码就是互相对得上的，PCA投影的数学本身没问题。
+3. TV/transition判定用`frozenset((ref,alt))`，与哪个算ref无关，不受影响。
+4. 唯一有实际影响的是**解释层面**：`decisions.tsv`里`CALLED_REF`/`CALLED_ALT`
+   这两个状态名，如果拿去对应真实生物学意义（比如"这个古代样本在N个位点
+   携带参考等位基因"），方向是反的——但这只影响措辞解读，不影响PCA坐标本身
+   对不对。
+
+**处理方案**：`23_validate_snp_ref_against_fasta.py`改成能区分"干净总体反
+标"与"真的乱了"两种情况：每个位点分类match_ref/match_alt/true_mismatch/
+no_such_contig/out_of_range，**只有**全部干净匹配REF（普通情况）或全部干净
+匹配ALT且true_mismatch/no_such_contig/out_of_range均为0（确认反标）才会PASS；
+**任何**match_ref与match_alt混合、或出现任一true_mismatch/no_such_contig/
+out_of_range，仍硬阻FATAL——保证这道检查仍能拓住真正损坏或错基因组版本的panel
+（那种情况会表现为散乱/不一致的不匹配，而不是这种干净的二分划分），不会因为
+这次发现变成形同虚设。
+
+**不做的事**：不反过来修改流程里实际的REF/ALT标签（比如交30写fixed_reference
+.snp时交换REF/ALT列、同步翻转现代矩阵的0/2编码）——既然PCA数学不受影响，
+这个更大面积的"修正"没必要，不在这次范围内做。不存在任何数值层面的risk。
+
+No parameter change was made. No capture/shotgun separation was inferred.
+capture_bait_bed remains null. MAPQ/BaseQ/MAF/LD参数未受影响。
+
+相关文件：`scripts/ecotype_pca_v2/23_validate_snp_ref_against_fasta.py`。
