@@ -84,7 +84,9 @@ coverage 的部分吗”对应如下：
 
 当前状态：
 
-- **Civán**：51 runner 的 Step 0 已跑过（发现系统性但无害的 REF/ALT 反标），报告可复用。
+- **Civán**：51 runner 的 Step 0 已跑过，确认是**系统性整体反标**（REF↔ALT 互换）。
+  这个反标对**旧 pysam 伪单倍体**是“内部自洽、无害”（panel 矩阵和古样本都读同一份
+  `.snp` 列）；但对 **pileupCaller 不无害**——见下方 3.4。
 - **3K / 720**：都还没跑过，需要新跑；720 的 REF/ALT 方向在
   `ECOTYPE_PCA_PANEL_QC_DESIGN.md` 里被标为“最急、最不了解”。
 
@@ -152,8 +154,9 @@ coverage 普查（对**未处理 panel 的位点全集**做）：`19_survey_anci
 - 每个 panel 只跑一次 `19_survey_ancient_coverage.py`，扫一遍 16 个 BAM。
 - 之后共享轴（ancient union）、私有轴（每样本覆盖子集）、MAF 交集（25）、LD（27）、
   以及 2.3 的漏斗统计，**全部复用这份 coverage 结果，不再重扫 BAM**。
-- 需要 `19` 额外持久化**每样本的覆盖位点清单**（目前只写了 union + per-sample
-  计数），这样私有轴也直接吃 survey，而不是从 calling 后的 `.call_sites.tsv` 反推。
+- 确认做：让 `19` **顺带写出每样本的覆盖位点清单**（不重扫 BAM，只是把 survey
+  已经算出的 `sample_covered` 落盘），这样私有轴也直接吃 survey，而不是从 calling
+  后的 `.call_sites.tsv` 反推；后续迭代只改清单交集，计算量小、也好定位错误。
 
 最后用 `29_convert_plink_to_eigenstrat.sh` 把过滤后的 PLINK 转回 EIGENSTRAT，
 供 `pileupCaller` / 私有轴（v1 `run_sample_panel_pca.sh` 只认 EIGENSTRAT）使用。
@@ -183,21 +186,16 @@ Phase A 结束时，每个面板产出一张覆盖度漏斗表（建议文件名
 - 这张表同时能看到共享轴（union）和私有轴（per-sample）两个口径，但主表按
   “每面板一行”给；若需要 16 样本明细，直接用 `19` 的 `per_sample_coverage_summary.tsv`。
 
-### 2.4 位点数下限 gate（位点太少就跳过 Phase B）
+### 2.4 位点数 gate（不设人为下限）
 
-Phase A 产出 marker 集后，先看数量，再决定是否往下做 `pileupCaller` /
-pseudo-haploid / PCA：
+Phase A 产出 marker 集后，**只有 0 位点的样本/面板才天然跳过**，其余都往下做
+`pileupCaller` / pseudo-haploid / PCA：
 
-- **共享轴**：若 `MAF ∩ coverage → LD` 之后的 marker 数低于阈值，该面板共享轴标记为
-  `INSUFFICIENT_MARKERS`，本轮不做后续 calling/PCA，只在统计表里留档。
-- **私有轴**：若某样本 per-sample 覆盖子集低于阈值，该样本该面板跳过 calling。
+- **共享轴**：`MAF ∩ coverage → LD` 之后 marker 数为 0 → 标记 `NO_MARKERS`，不做
+  calling/PCA；否则照常跑。
+- **私有轴**：某样本 per-sample 覆盖子集为 0 → 跳过该样本；否则照常跑。
 
-阈值建议：
-
-- 共享 marker 集下限沿用 config 现有 `information_flags.very_low = 200`。
-- 私有轴每样本 callable 沿用 Stage 50 的 `< 50 = descriptive_only` 口径。
-
-具体数字待用户确认后再写死。
+位点多少只记录在统计表里，不据此丢弃。
 
 ---
 
@@ -260,10 +258,15 @@ plink --bfile {prefix} \
 
 ### 3.4 必须验证的点
 
-- **REF/ALT 方向**：`pileupCaller` 的 0/2 编码必须和本仓库 EIGENSTRAT
-  `REF=2; ALT=0; MISSING=9` 一致；用 Snakefile 的 `--a2-allele` 对齐，并对每个
-  panel 做 `23_validate_snp_ref_against_fasta.py` 校验（Civán 已发现过一次系统性
-  REF/ALT 反标，720 的方向仍是未知）。
+- **REF/ALT 方向（关键）**：pileupCaller 用 `samtools mpileup -f irgsp.fa`，参考
+  基因组的碱基是锚点；若把反标的 REF/ALT 直接当 pileupCaller 的 `.snp` 喂进去，
+  0/2 会整体反掉，和现代 EIGENSTRAT 的 `REF=2; ALT=0; MISSING=9` 对不上。
+  - 先按 Phase 0 的 `23_validate_snp_ref_against_fasta.py` 结果，把 pileupCaller
+    的 `.snp` **纠正到 FASTA 方向**（REF = irgsp.fa 里的碱基；Civán 要 REF↔ALT 换回）。
+  - 再用 Snakefile 的 `plink --a2-allele <ref> 2 1 --make-bed` 把输出对齐到同一方向。
+  - 最强验证：用一个 panel 里已知群体的现代样本做 leave-one-out（`pseudo_haploid_call.py`
+    文档里写的那套），确认它投影回自己已知群体，而不是往相反群体漂——这比只看 FASTA
+    匹配率更直接。
 - **seed 语义**：`pileupCaller --randomHaploid --seed` 是“每样本一个稳定 seed”，
   与现 pysam 版“每站点一个 seed”不同；本轮 ALL-only、不再要求 TV/ALL 同抽，
   所以这个差异可接受，但要在 `.call_report.tsv` 里记清 seed 合同。
@@ -370,8 +373,7 @@ plink --bfile {prefix} \
 3. MAPQ/BaseQ 用仓库冻结 `30/30`，还是改 Snakefile 的 `25/25`。
 4. Phase B 输出对接：确认“写一层 PLINK→calls 转换、下游不动”这个方案。
 5. Civán 的 `geno_maf_filtered`（ALL）如果 51 已产出，是否直接复用。
-6. 共享轴 LD 已确认本轮做（`27`），但**位点数下限 gate 的具体阈值**待确认：
-   共享 marker 集下限是否就用 `very_low=200`，私有轴每样本 callable 是否用 `<50`。
+6. 共享轴 LD 已确认本轮做（`27`）；位点数下限**不设人为阈值**，有位点的都跑。
 
 ---
 
