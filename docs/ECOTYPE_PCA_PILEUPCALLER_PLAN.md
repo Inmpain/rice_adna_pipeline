@@ -72,8 +72,38 @@ coverage 的部分吗”对应如下：
 ```text
 --snp <panel 原始 .snp>
 --fasta /home/scratch/yinmt202607/db/asian_rice_panel_index/irgsp.fa
+--contig-format chr%02d
 --out <panel>.ref_vs_fasta.report.tsv
 ```
+
+执行命令（服务器侧，用户执行）：
+
+```bash
+mkdir -p ~/phase0 && cd ~/phase0
+BASE="https://raw.githubusercontent.com/Inmpain/rice_adna_pipeline/codex/ecotype-pca-pileupcaller/scripts/ecotype_pca_v2"
+curl -fL -O "$BASE/23_validate_snp_ref_against_fasta.py"
+curl -fL -O "$BASE/fixed_projection_lib.py"
+
+mkdir -p /home/scratch/yinmt202607/gene/results/ecotype_pca_v2/phase0
+
+# Panel A 3K
+python3 23_validate_snp_ref_against_fasta.py \
+  --snp /home/scratch/yinmt202607/db/29M_3k/NB_final_snp.snp \
+  --fasta /home/scratch/yinmt202607/db/asian_rice_panel_index/irgsp.fa \
+  --contig-format chr%02d \
+  --out /home/scratch/yinmt202607/gene/results/ecotype_pca_v2/phase0/3k.ref_vs_fasta.report.tsv
+
+# Panel B 720
+python3 23_validate_snp_ref_against_fasta.py \
+  --snp /home/scratch/yinmt202607/db/6.7M_720/asn720.6m.snp \
+  --fasta /home/scratch/yinmt202607/db/asian_rice_panel_index/irgsp.fa \
+  --contig-format chr%02d \
+  --out /home/scratch/yinmt202607/gene/results/ecotype_pca_v2/phase0/720.ref_vs_fasta.report.tsv
+```
+
+Civán 已由 51 runner Step 0 跑过，报告复用；3K/720 按上面各跑一次。
+若输出里出现大量 `no_such_contig`，说明该 panel 的 `.snp` 染色体列不是纯数字，
+再回来调整 `--contig-format`。
 
 三种结果：
 
@@ -215,10 +245,10 @@ Phase A 产出 marker 集后，**只有 0 位点的样本/面板才天然跳过*
 - **plink**：装进现有 `snakemake` 环境：`mamba install bioconda::plink`（1.90b7.7）。
 - **samtools**：`module load samtools`。
 
-SLURM 作业里按这个顺序准备环境：
+SLURM 作业里按这个顺序准备环境（实际激活方式）：
 
 ```bash
-mamba activate snakemake        # 提供 plink
+source activate /home/usr/yinmt/.local/mamba/snakemake   # 提供 plink
 module load samtools            # 提供 samtools mpileup
 PILEUP_CALLER=~/software/pileupCaller-linux
 which "$PILEUP_CALLER" plink samtools
