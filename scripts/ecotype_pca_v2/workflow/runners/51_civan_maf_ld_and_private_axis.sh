@@ -74,6 +74,7 @@ for TRACK in ALL TV; do
     TV)  COVERAGE_SITES="$CIVAN_UNION_SITES_TV" ;;
   esac
   TRACK_DIR="$OUT/SHARED/$TRACK"
+  mkdir -p "$TRACK_DIR/calls"
   COVERAGE_SNPLIST="$TRACK_DIR/coverage.snplist.txt"
   python3 scripts/ecotype_pca_v2/21_extract_fixed_snplist.py \
     --sites-tsv "$COVERAGE_SITES" --out "$COVERAGE_SNPLIST"
