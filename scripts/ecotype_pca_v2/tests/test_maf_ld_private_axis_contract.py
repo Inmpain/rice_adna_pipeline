@@ -16,7 +16,7 @@ class Contract(unittest.TestCase):
             self.assertEqual(r.returncode, 0, f"{name}: {r.stderr}")
 
     def test_bash_help_and_syntax(self):
-        for name in ['26_plot_pc_pairs.sh']:
+        for name in ['26_plot_pc_pairs.sh', '29_convert_plink_to_eigenstrat.sh']:
             r = subprocess.run(
                 ['bash', str(ROOT / 'scripts/ecotype_pca_v2' / name), '--help'],
                 capture_output=True, text=True)
