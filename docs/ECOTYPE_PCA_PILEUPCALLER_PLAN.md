@@ -319,11 +319,17 @@ plink --bfile {prefix} \
 ### 3.4 必须验证的点
 
 - **REF/ALT 方向（关键）**：pileupCaller 用 `samtools mpileup -f irgsp.fa`，参考
-  基因组的碱基是锚点；若把反标的 REF/ALT 直接当 pileupCaller 的 `.snp` 喂进去，
-  0/2 会整体反掉，和现代 EIGENSTRAT 的 `REF=2; ALT=0; MISSING=9` 对不上。
-  - 先按 Phase 0 的 `23_validate_snp_ref_against_fasta.py` 结果，把 pileupCaller
-    的 `.snp` **纠正到 FASTA 方向**（REF = irgsp.fa 里的碱基；Civán 要 REF↔ALT 换回）。
-  - 再用 Snakefile 的 `plink --a2-allele <ref> 2 1 --make-bed` 把输出对齐到同一方向。
+  基因组碱基是锚点，并且会**自动把 genotype 翻成 irgsp 方向**；而现代
+  `.eigenstratgeno` 是按 panel 自己的 REF/ALT（`REF=2; ALT=0; MISSING=9`）编码的。
+  两者方向不一致时，古样本会在反标位点整体和现代样本相反，PCA 直接错。
+  - **必须两边一起归一化到 irgsp**：
+    - 3K / Civán（整体反标）：`.snp` 的 REF/ALT 全局互换，**同时**现代矩阵 `0↔2`
+      全局互换。
+    - 720（混合）：按 `720.flip.snplist` 只翻那 605,270 个位点，现代矩阵同样只翻
+      这些位点。
+    - 14 个 `true_mismatch` 位点（FASTA 是第三个碱基或 N）单独标记缺失/剔除。
+  - 再用 Snakefile 的 `plink --a2-allele <ref> 2 1 --make-bed` 把 pileupCaller
+    输出对齐到同一方向。
   - 最强验证：用一个 panel 里已知群体的现代样本做 leave-one-out（`pseudo_haploid_call.py`
     文档里写的那套），确认它投影回自己已知群体，而不是往相反群体漂——这比只看 FASTA
     匹配率更直接。
