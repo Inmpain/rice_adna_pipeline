@@ -8,7 +8,8 @@ class Contract(unittest.TestCase):
         for name in ['23_validate_snp_ref_against_fasta.py',
                      '24_extract_sample_covered_sites.py',
                      '25_intersect_snplists.py',
-                     '27_ancient_coverage_first_ld_prune.py']:
+                     '27_ancient_coverage_first_ld_prune.py',
+                     '28_maf_filter_eigenstrat_for_private_axis.py']:
             r = subprocess.run(
                 [sys.executable, str(ROOT / 'scripts/ecotype_pca_v2' / name), '--help'],
                 capture_output=True, text=True)
