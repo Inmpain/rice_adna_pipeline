@@ -121,6 +121,17 @@ Civán 已由 51 runner Step 0 跑过，报告复用；3K/720 按上面各跑一
 结论：3K 和 Civán 都是**干净整体反标**，可一致处理（预交换 REF/ALT 或依赖
 pileupCaller 的自动翻链）；720 是**混合方向**，不能按全局 swap 处理，见 3.4。
 
+720 的局部反标**无染色体/等位基因型偏好**：12 条染色体 `match_alt` 占比都在
+8–10%，6 种等位基因对也都约 8–9%——是均匀混合，不是某条染色体或某类碱基的系统性
+反标。最可能是 720 面板的 REF/ALT 不是严格按 irgsp 参考定义（例如按 major/minor
+频率、或从其他参考 liftOver 而来）。
+
+Phase 0 还需产出每 panel 的**翻链清单**（哪些位点要 REF/ALT 互换）：
+
+- 3K / Civán：整体反标 → 翻链 = 全部位点（等价于全局 swap，不需要逐位点列表）。
+- 720：混合 → 把 605,270 个 `match_alt` 位点的 SNP ID 落成一张清单，Phase B 用它
+  把现代矩阵和 pileupCaller 输出统一到 irgsp 方向。
+
 ---
 
 ## 2. Phase A — marker 准备（漏斗：参考覆盖 → panel 交集 → MAF → LD，ALL track）
