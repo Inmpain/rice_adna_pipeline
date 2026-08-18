@@ -24,13 +24,10 @@
   **参考基因组覆盖 → panel 交集 → MAF → LD**；“panel”这里指 **UNK 剔除个体后、
   还没做 MAF/LD 的原始 panel**（位点全集）。
 - 绘图加两项标注：**覆盖位点数**、**PC 解释度**；**去掉红星 highlight**。
-- **720 建轴调整（2026-08-18）**：`axis_mode: all_modern` 改为**栽培锚点建轴**
-  （`axis_labels: IND/AUS/ARO/TRJ/TEJ`），野生 `OrA-OrF/OrADM/RAY` 与古代样本
-  一律投影——否则高缺失野生样本会污染轴。
-  - 实现注意：`06_build_reference_sample_set.py` 的 `build_panel_B()` 当前是**硬编码
-    keep-all**，不读 config 的 `axis_mode/axis_labels`。要改成栽培锚点建轴，需要
-    **改 `build_panel_B()` 读取 `panel_B_720.axis_labels`**（对齐 `build_panel_A/C`
-    的实现），并更新 config；不是只改 yaml 就行。
+- **720 建轴（2026-08-18 决定：保持 `all_modern`）**：野生稻参与建轴，不改成栽培锚点。
+  依据：720 的来源论文（Huang et al. 2012 等）是把 203 栽培 + 435 野生放同一池、
+  用 `ngsCovar` 读基因型似然一起建轴（无投影）。先保持现状，用三档 PCA 图验证我们
+  这套“硬基因型 + geno 0.20 + LD”的过滤后结构是否仍合理，再决定要不要换轴。
 - 伪单倍体调用流程参考用户提供的 `Snakefile.pseudohaploid.from_panel`（本文件
   末尾附其关键参数映射）。
 

@@ -51,11 +51,10 @@
 ## 3. 本轮参数调整（写入 config 前的决策）
 
 1. `panel_B_720.geno: 0.10 → 0.20`。
-2. `panel_B_720.axis_mode: all_modern` → 栽培锚点建轴
-   （`axis_labels: IND/AUS/ARO/TRJ/TEJ`），野生 `OrA-OrF/OrADM/RAY` 与古代样本投影。
+2. `panel_B_720.axis_mode`：**保持 `all_modern`**（野生稻参与建轴），暂不改成栽培锚点。
 
-理由：720 野生样本缺失率 ~50%，参与建轴会污染轴；和 3K/Civán 的“栽培参考建轴、
-野生/古代投影”原则一致。
+理由：720 来源论文用 `ngsCovar` 对基因型似然把栽培+野生一起建轴；先沿用这一思路，
+用三档 PCA 图验证“硬基因型 + geno 0.20 + LD”下的结构再决定是否换轴。
 
 ---
 
