@@ -1,10 +1,36 @@
-# Ecotype PCA: pileupCaller + unified MAF + plot annotations — 执行计划（草案）
+# Ecotype PCA: pileupCaller + unified MAF + plot annotations — 执行计划
 
-状态：**计划草案，只写文档、不写执行代码**。本文件是下一轮实现的蓝图，
-等待用户逐项确认后再落到脚本。
+状态：**部分已执行**（2026-08-18）。本文件原始部分是“只写文档”阶段的蓝图，
+现在 `scripts/ecotype_pca_v2/` 下已有对应脚本落地、Phase 0/Phase A 已在服务器跑出
+部分结果。下方新增「实际执行策略」一节覆盖原文中与当前实际不符的表述，执行时以该节为准。
 
 分支：`codex/ecotype-pca-pileupcaller`（从 `codex/ecotype-pca-panel` @ `a99efd5`
-分出，未改任何代码/脚本，只新增本计划文档）。
+分出；现已新增 pileupCaller 调用/转换/绘图脚本）。
+
+---
+
+## 实际执行策略（2026-08-18 更新，供执行窗口用）
+
+> 本节是当前真正照做的执行顺序，覆盖下文「草案」中已被 decisions_log 纠正/更新的部分。
+
+- **主/辅分析顺序已纠正**：主分析 = 每个古样本用自己在**全景面板**上真实覆盖到的位点
+  独立建子集投影（复用 v1 已验证的 `scripts/ecotype_pca/run_sample_panel_pca.sh`，
+  16 样本 × {3K,720} 面板）；辅助/交叉验证 = MAF 为主的共享投影。不要把共享轴当主线死磕。
+- **Civán（Panel C）到此为止**：保留 1015-marker ALL track shared 结果作为方法论验证，
+  不再追加 TV，也不修 51 runner 的 private axis 实现。
+- **3K / 720（Panel A/B）都做**：
+  - 主分析复用 v1 `run_sample_panel_pca.sh`；
+  - 共享投影走 `scripts/ecotype_pca_v2/workflow/runners/61_panel_maf_shared_projection.sh`
+    （`--panel A` 或 `--panel B`，ALL track，MAF 为主，不做 ancient-coverage-first 那套）。
+- **古代 calling 用 pileupCaller**：`samtools mpileup | pileupCaller --randomHaploid`
+  （v1.5.3.1，`~/software/pileupCaller-linux`），脚本
+  `scripts/ecotype_pca_v2/pileupcaller_shared_call.sh` +
+  `scripts/ecotype_pca_v2/pileupcaller_plink_to_calls.py`。
+- **共享轴 LD 用 ancient-coverage-first**（`27_ancient_coverage_first_ld_prune.py`）；
+  现代诊断用物理抽稀（`plink2 --thin 5000`）做 r² LD 的鲁棒性对照。
+- **720 建轴保持 `all_modern`**，geno 放宽到 **0.20**。
+- **末尾 smartpca `lsqproject` 投影失败本轮不追**，留档在
+  `ECOTYPE_PCA_PILEUPCALLER_PATH_MAP.md` 第 6 节。
 
 ---
 
