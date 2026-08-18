@@ -14,22 +14,34 @@ def main():
     ap.add_argument("--out", required=True, help="output prefix (writes OUT.calls.txt)")
     args = ap.parse_args()
 
+    # Read the .bim marker order first, so we are robust to extra .raw columns
+    # (plink2 --export A may include non-variant columns like PHENO/SEX).
+    bim_ids = []
+    with open(args.bfile + ".bim") as fh:
+        for line in fh:
+            bim_ids.append(line.split()[1])
+
     raw = args.out + ".raw"
     subprocess.run(["plink2", "--bfile", args.bfile, "--export", "A", "--out", args.out],
                    check=True)
 
-    calls = []
     with open(raw) as fh:
         header = fh.readline().rstrip("\n").split()
-        n = len(header) - 2  # skip FID IID
         line = fh.readline().rstrip("\n").split()
-        for val in line[2:2 + n]:
-            if val == "0":
-                calls.append("0")
-            elif val == "2":
-                calls.append("2")
-            else:
-                calls.append("9")  # '1' (unexpected for haploid) or NA -> missing
+    # Map variant column name -> value index (0-based within the data row).
+    col = {name: i for i, name in enumerate(header)}
+    calls = []
+    for sid in bim_ids:
+        if sid not in col:
+            calls.append("9")
+            continue
+        val = line[col[sid]]
+        if val == "0":
+            calls.append("0")
+        elif val == "2":
+            calls.append("2")
+        else:
+            calls.append("9")  # '1' (unexpected for haploid) or NA -> missing
 
     out_calls = args.out + ".calls.txt"
     with open(out_calls, "w") as fh:
