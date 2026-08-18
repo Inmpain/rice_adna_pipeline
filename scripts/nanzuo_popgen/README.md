@@ -99,8 +99,9 @@ bash collect_stats.sh
 - 工具(bowtie2/samtools)需在 sbatch 任务内可用；脚本已做 `module load`
   兜底，若走 conda/mamba 环境，请在 submit 脚本 `sbatch` 前加 `--export` 或
   在单脚本头部把 env 的 bin 加进 PATH。
-- 队列分区默认 `comp`，资源默认(提取 32G/9h、比对 24G/12h、bam2fq 8G/2h)，
-  用 `PARTITION=... bash submit_extract.sh` 覆盖分区，其余在 submit 脚本里
+- 队列分区默认 `comp`，并默认 `--exclude=node05,node06`(这两个节点会 ban 掉
+  作业, 必须排除)。资源默认(提取 32G/9h、比对 24G/12h、bam2fq 8G/2h)，
+  用 `PARTITION=... EXCLUDE=... bash submit_extract.sh` 覆盖，其余在 submit 脚本里
   直接改。
 - 提取阶段 BAM 只作中间产物用完即删，最终只留 FASTQ；重复不删、q 过滤不删，
   全部只出统计表。

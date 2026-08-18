@@ -11,6 +11,7 @@ set -euo pipefail
 
 THREADS="${1:-20}"
 PARTITION="${PARTITION:-comp}"
+EXCLUDE="${EXCLUDE:-node05,node06}"
 
 BASE=/home/scratch/yinmt202607/nanzuo
 MERGE_DIR="$BASE/01.merge"
@@ -25,7 +26,7 @@ for fq in "$MERGE_DIR"/*.combined.fastq.gz; do
   [[ -s "$out" ]] && { echo "[$sample] 已存在, 跳过"; continue; }
   jobid=$(sbatch --parsable --job-name="nz_map_${sample}" \
     --cpus-per-task "$THREADS" --mem 24G --time 12:00:00 \
-    --partition "$PARTITION" \
+    --partition "$PARTITION" --exclude "$EXCLUDE" \
     --output "$SLURM_LOG/map_${sample}.%j.out" \
     "$SCRIPT_DIR/map_irgsp_single.sh" "$sample" "$THREADS")
   echo "[$sample] 已提交: $jobid"

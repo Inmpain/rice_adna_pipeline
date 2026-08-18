@@ -11,6 +11,7 @@ set -euo pipefail
 
 THREADS="${1:-20}"
 PARTITION="${PARTITION:-comp}"
+EXCLUDE="${EXCLUDE:-node05,node06}"
 
 BASE=/home/scratch/yinmt202607/nanzuo
 POPGEN_DIR=/home/scratch/yinmt202607/2.nanzuo_popgen_yancheng
@@ -29,7 +30,7 @@ extract_one() {
   local jobid
   jobid=$(sbatch --parsable --job-name="nz_ext_${sample}" \
     --cpus-per-task "$THREADS" --mem 32G --time 09:00:00 \
-    --partition "$PARTITION" \
+    --partition "$PARTITION" --exclude "$EXCLUDE" \
     --output "$SLURM_LOG/ext_${src}_${sample}.%j.out" \
     "$SCRIPT_DIR/extract_bt2_single.sh" "$fq" "$src" "$THREADS")
   echo "[$sample][$src] 已提交: $jobid"
@@ -44,7 +45,7 @@ bam2fq_one() {
   local jobid
   jobid=$(sbatch --parsable --job-name="nz_bam2fq_${sample}" \
     --cpus-per-task 4 --mem 8G --time 02:00:00 \
-    --partition "$PARTITION" \
+    --partition "$PARTITION" --exclude "$EXCLUDE" \
     --output "$SLURM_LOG/bam2fq_${sample}.%j.out" \
     "$SCRIPT_DIR/bam_to_fastq_single.sh" "$bam" 4)
   echo "[$sample][function] 已提交: $jobid"
