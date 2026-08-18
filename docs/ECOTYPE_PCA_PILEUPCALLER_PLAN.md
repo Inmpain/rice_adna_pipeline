@@ -14,7 +14,7 @@
 - 位点只做 **ALL track**，不再分 TV（本轮 TV 没有用）。
 - 统一 **MAF = 0.01**；`geno` 仍按 `config/ecotype_pca_v2.yaml`：
   - 3K = 0.05
-  - 720 = 0.10
+  - 720 = 0.20（原 0.10；720 缺失率过高，0.10 只保留 0.76%，2026-08-18 放宽）
   - Civán = 0.05
 - 古样本 calling **确定替换为 sequenceTools `pileupCaller --randomHaploid`**，
   替换：
@@ -24,6 +24,9 @@
   **参考基因组覆盖 → panel 交集 → MAF → LD**；“panel”这里指 **UNK 剔除个体后、
   还没做 MAF/LD 的原始 panel**（位点全集）。
 - 绘图加两项标注：**覆盖位点数**、**PC 解释度**；**去掉红星 highlight**。
+- **720 建轴调整（2026-08-18）**：`axis_mode: all_modern` 改为**栽培锚点建轴**
+  （`axis_labels: IND/AUS/ARO/TRJ/TEJ`），野生 `OrA-OrF/OrADM/RAY` 与古代样本
+  一律投影——否则高缺失野生样本会污染轴。
 - 伪单倍体调用流程参考用户提供的 `Snakefile.pseudohaploid.from_panel`（本文件
   末尾附其关键参数映射）。
 
@@ -379,9 +382,20 @@ plink --bfile {prefix} \
 
 ---
 
-## 4. Phase C — 绘图（加位点数 + PC 解释度，去红星）
+## 4. Phase C — 绘图（三档诊断 + 位点数/解释度 + 去红星）
 
-出图规格：
+### 4.1 三档 modern-only 诊断图（每面板三张）
+
+在放古代样本之前，对每个面板的现代参考样本各跑一次 PCA，逐档看结构：
+
+1. **raw（没过）**：锁 REF 后、07 之前的全 panel。
+2. **MAF/geno（07 之后）**。
+3. **LD（27 之后）**。
+
+每档都出 PC1–PC10（5 对）、轴标签写**解释度**、图内标**位点数**。三档并排比较，
+确认过滤是在“去噪”还是“破坏结构”。这也是判断 720 的 geno/建轴方案对不对的依据。
+
+### 4.2 古代投影后的出图规格
 
 - **共享轴**：`26_plot_pc_pairs.sh`，16 样品同一坐标系、全部样品一张图，
   PC1–PC10（5 对）。
@@ -409,7 +423,7 @@ plink --bfile {prefix} \
 | 参数 | 值 | 来源 |
 |---|---|---|
 | MAF | 0.01（三面板统一） | config |
-| geno | 3K=0.05 / 720=0.10 / Civán=0.05 | config |
+| geno | 3K=0.05 / 720=0.20 / Civán=0.05 | config（720 已放宽） |
 | track | ALL（本轮不做 TV） | 本轮决定 |
 | sensitivity | primary | 计划 |
 | ancient MAPQ | 30 | config `ancient.mapq` |
