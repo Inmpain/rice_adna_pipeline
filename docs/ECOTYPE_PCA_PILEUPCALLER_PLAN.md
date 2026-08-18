@@ -27,6 +27,10 @@
 - **720 建轴调整（2026-08-18）**：`axis_mode: all_modern` 改为**栽培锚点建轴**
   （`axis_labels: IND/AUS/ARO/TRJ/TEJ`），野生 `OrA-OrF/OrADM/RAY` 与古代样本
   一律投影——否则高缺失野生样本会污染轴。
+  - 实现注意：`06_build_reference_sample_set.py` 的 `build_panel_B()` 当前是**硬编码
+    keep-all**，不读 config 的 `axis_mode/axis_labels`。要改成栽培锚点建轴，需要
+    **改 `build_panel_B()` 读取 `panel_B_720.axis_labels`**（对齐 `build_panel_A/C`
+    的实现），并更新 config；不是只改 yaml 就行。
 - 伪单倍体调用流程参考用户提供的 `Snakefile.pseudohaploid.from_panel`（本文件
   末尾附其关键参数映射）。
 
