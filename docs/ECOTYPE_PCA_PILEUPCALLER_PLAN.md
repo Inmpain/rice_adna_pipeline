@@ -480,7 +480,27 @@ plink --bfile {prefix} \
 - **C**：改动范围小、独立，先拿下。
 - **B**：风险最大，但 **pileupCaller 的 spike 可以提前**——不依赖三面板 MAF，
   只要 `which pileupCaller` 有结果，就能拿 Civán 现成 1015-marker 集 + 1 个样本
-  先验证工具/输出格式，把最大未知项最早暴露。
+先验证工具/输出格式，把最大未知项最早暴露。
+
+---
+
+## 7.1 对照测试：ANGSD 基因型似然 + ngsCovar（可选，逐步骤替换）
+
+720 的来源论文（Huang et al. 2012 等）不是“硬分型 + MAF/LD + smartpca”，而是
+**ANGSD 基因型似然（GL）+ ngsCovar**。为了验证我们这套硬基因型管线在高缺失 panel
+上是否合理，可对每一步做“可替换测试”，批量出图对比：
+
+| 我们的步骤 | 可替换为 | 工具 |
+|---|---|---|
+| 位点发现 / MAF 过滤（07） | 全基因组扫描、`-doMaf` 估等位基因频率 | `ANGSD` |
+| 古样本 calling（pileupCaller） | 目标位点提取基因型似然（`.beagle.gz`） | `ANGSD -GL` |
+| 现代 PCA（smartpca） | 用 GL 算协方差矩阵 → PCA | `ngsTools ngsCovar` |
+
+目的：和我们的“硬基因型 + MAF/LD + smartpca”逐档对比，确认 720 高缺失下两种方法
+的群体结构是否一致；同时给出“野生/栽培”结构是否受方法影响。
+
+前置：需先装 `ANGSD` 和 `ngsTools`（服务器侧，后续单独建环境）；装好前不影响主线
+Phase A/B。主线先跑，对照测试作为并行验证。
 
 ---
 
