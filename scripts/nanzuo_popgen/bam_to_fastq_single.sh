@@ -23,7 +23,7 @@ EXCLUDE_FLAGS=0x904
 
 [[ -n "$bam" ]] || { echo "用法: $0 <bam_path> [threads]" >&2; exit 1; }
 
-sample=$(basename "$bam" | grep -oE 'YWL1[-_]A[0-9]+' | head -1 | tr '_' '-')
+sample=$(basename "$bam" | grep -oE 'YWL1[-_]A[0-9]+' | head -1 | tr '_' '-') || true
 [[ -n "$sample" ]] || { echo "ERROR: 无法从 $bam 解析样本名" >&2; exit 1; }
 
 out_fq="$OUT_DIR/${sample}.bam2fq.fastq.gz"

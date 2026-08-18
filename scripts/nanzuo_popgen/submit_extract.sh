@@ -24,7 +24,7 @@ mkdir -p "$SLURM_LOG"
 extract_one() {
   local fq=$1 src=$2
   local sample out
-  sample=$(basename "$fq" | grep -oE 'YWL1[-_]A[0-9]+' | head -1 | tr '_' '-')
+  sample=$(basename "$fq" | grep -oE 'YWL1[-_]A[0-9]+' | head -1 | tr '_' '-') || true
   [[ -n "$sample" ]] || { echo "[$(basename "$fq")][$src] 跳过(非 YWL1 样本, 如阴性对照)"; return; }
   out="$BASE/00.extract/$src/${sample}.bt2.primary_mapped.fastq.gz"
   [[ -s "$out" ]] && { echo "[$sample][$src] 已存在, 跳过"; return; }
@@ -40,7 +40,7 @@ extract_one() {
 bam2fq_one() {
   local bam=$1
   local sample out
-  sample=$(basename "$bam" | grep -oE 'YWL1[-_]A[0-9]+' | head -1 | tr '_' '-')
+  sample=$(basename "$bam" | grep -oE 'YWL1[-_]A[0-9]+' | head -1 | tr '_' '-') || true
   [[ -n "$sample" ]] || { echo "[$(basename "$bam")][function] 跳过(非 YWL1 样本)"; return; }
   out="$BASE/00.extract/function/${sample}.bam2fq.fastq.gz"
   [[ -s "$out" ]] && { echo "[$sample][function] 已存在, 跳过"; return; }

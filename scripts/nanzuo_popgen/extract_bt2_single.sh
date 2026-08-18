@@ -35,7 +35,7 @@ EXCLUDE_FLAGS=0x904
 
 [[ -n "$fq" && -n "$source" ]] || { echo "用法: $0 <fq_path> <popgen|shotgun> [threads]" >&2; exit 1; }
 
-sample=$(basename "$fq" | grep -oE 'YWL1[-_]A[0-9]+' | head -1 | tr '_' '-')
+sample=$(basename "$fq" | grep -oE 'YWL1[-_]A[0-9]+' | head -1 | tr '_' '-') || true
 [[ -n "$sample" ]] || { echo "ERROR: 无法从 $fq 解析样本名" >&2; exit 1; }
 
 out_fq="$OUT_DIR/${sample}.bt2.primary_mapped.fastq.gz"
