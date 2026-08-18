@@ -10,7 +10,7 @@ set -euo pipefail
 # =====================================================================
 
 THREADS="${1:-20}"
-PARTITION="${PARTITION:-compregular}"
+PARTITION="${PARTITION:-comp}"
 
 BASE=/home/scratch/yinmt202607/nanzuo
 POPGEN_DIR=/home/scratch/yinmt202607/2.nanzuo_popgen_yancheng

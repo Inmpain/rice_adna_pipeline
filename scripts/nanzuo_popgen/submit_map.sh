@@ -10,7 +10,7 @@ set -euo pipefail
 # =====================================================================
 
 THREADS="${1:-20}"
-PARTITION="${PARTITION:-compregular}"
+PARTITION="${PARTITION:-comp}"
 
 BASE=/home/scratch/yinmt202607/nanzuo
 MERGE_DIR="$BASE/01.merge"
