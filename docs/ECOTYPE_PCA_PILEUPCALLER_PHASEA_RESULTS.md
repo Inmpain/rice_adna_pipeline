@@ -48,10 +48,10 @@
 
 ---
 
-## 3. 本轮参数调整（写入 config 前的决策）
+## 3. 本轮参数调整（已落入 config）
 
-1. `panel_B_720.geno: 0.10 → 0.20`。
-2. `panel_B_720.axis_mode`：**保持 `all_modern`**（野生稻参与建轴），暂不改成栽培锚点。
+1. `panel_B_720.geno: 0.10 → 0.20`（已写入 `scripts/ecotype_pca_v2/config/ecotype_pca_v2.yaml`；此前文档已定、config 仍 0.10 是一处 drift）。
+2. `panel_B_720.axis_mode`：**保持 `all_modern`**（野生稻参与建轴），不改成栽培锚点。
 
 理由：720 来源论文用 `ngsCovar` 对基因型似然把栽培+野生一起建轴；先沿用这一思路，
 用三档 PCA 图验证“硬基因型 + geno 0.20 + LD”下的结构再决定是否换轴。
@@ -76,6 +76,6 @@
 
 ## 5. 下一步
 
-- 720 重跑 07（geno 0.20 + 栽培锚点建轴）。
+- 720 重跑 07（geno 0.20 + 保持 `all_modern` 建轴；不要写成栽培锚点）。
 - 三面板各跑 coverage 普查（19）→ MAF∩coverage（25）→ 共享轴 LD（27）。
 - 三档 modern-only PCA 诊断图（raw / MAF-geno / LD），每档 PC1–PC10 + 解释度 + 位点数。

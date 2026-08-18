@@ -139,6 +139,10 @@ Civán : systematic_ref_alt_swap（整体反标）
 3K = 2859，720 = 758，Civán = 1015
 ```
 
+> 更正（2026-08-18）：720 已跑通验证的共享投影（`720hybrid.v2.final.png`）用
+> **44,920 marker**（pileupCaller TotalSites=44920），不是上面的 758。758 是更早
+> coverage-first 路线数字。出图 `--nmarkers` 用实际 `.snp` 行数。
+
 720 漏斗：`6,769,714 raw → geno0.20 ~1.26M → MAF0.01 1,208,247 → ∩ ancient coverage 834 → r² LD 758`。
 
 ### 4.3 其他可复用中间文件
@@ -163,14 +167,13 @@ Civán : systematic_ref_alt_swap（整体反标）
 
 ---
 
-## 6. 投影失败说明（不追，仅留档）
+## 6. 投影失败说明（早期失败，已被 pileupCaller 版 supersede）
 
-末尾 smartpca `lsqproject` 投影失败，表现为古代样本被 `insufficient data` 剔除出
-`.evec`（`15_pca_qc.py` 的 FATAL 门槛会拦下）。根因与此前 Civán 共享轴一致：
-古代覆盖位点稀疏、与 marker 集交集过小，导致可调用位点数不足。
-
-本轮决定：**不继续追这条投影失败**。它不影响已完成的 Phase 0 / Phase A 留档，
-也不影响仓库内 pileupCaller 脚本与绘图脚本的交付。后续若要恢复，优先排查：
+**superseded（2026-08-18）**：早期末尾 smartpca `lsqproject` 把古代样本判
+`insufficient data` 剔出 `.evec`（`15_pca_qc.py` FATAL 门槛拦下）。改用
+pileupCaller 44,920-marker 共享投影后 16 古样本全部进 `.evec`（call 21–1314），
+此失败不再阻塞。本条只留历史；当前待办是「两张 720 图 PC 解释度差异」根因核对
+（见 `HANDOFF` 第 4 节 B7）。若日后又遇「古代样本消失」，按下述顺序排查：
 
 1. 各样本 `coverage_funnel.tsv` 里 `ld_passed_covered` 是否为 0/极低；
 2. 16 个古样本 BAM 与 marker `.snp` 的 contig 命名/排序是否一致（`chr01` vs 数字）；

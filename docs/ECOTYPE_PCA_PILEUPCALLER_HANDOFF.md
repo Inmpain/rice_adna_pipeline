@@ -143,6 +143,8 @@ python3 plot_smartpca_evec.py \
 | B4 | merge PASS 但结果错位 | `13_merge` 只查行数、不查 SNP ID 顺序 | merge 前跑 3.4 的顺序核对 |
 | B5 | 文件变成 `.xxx`（带点）/ `No such file` | `$PREFIX`/`$BFILE` 为空、或 `cd` 失败后 pwd 错 | 显式赋值前缀；脚本已加 `[[ -s file ]]` 前置校验 |
 | B6 | 某古样本 call 数极低、投影噪声大 | 覆盖本身少（如 `LV7008416294` 仅 21） | 不是 bug；单独标记为低置信，别和其他 15 个同等解读 |
+| B7 | 两张 720 图 PC 解释度差很多（如 21.71/19.70 vs 5.70/6.03） | 不是 `lsqproject` 投影导致；投影不改 eigenvalue。已定位为**图来源不同**：17:42 旧图是 `plot_panel_pca.py` 风格（每个子图内置 legend、无 Ancient 点）的 modern-only/plink2 诊断；20:14 新图是 `plot_smartpca_evec.py`（b18e409 后单外部 legend + Ancient 空心点）的 smartpca 投影图 | 先 `wc -l`/`head` 两个 `.eval`（或旧图的 plink2 `.eigenval`）核对行数/量级；只有同一引擎、同一 marker 集、同一参考样本的 `.eval` 才可逐 PC 比 |
+| B8 | 文档写 720 `geno 0.20`，实际 runner 仍按旧阈值跑 | `config/ecotype_pca_v2.yaml` 曾 drift 成 `panel_B_720.geno: 0.10`；07/61 一律从 config 读值 | 已修 config 为 0.20；跑 07/61 前先 `grep -n 'geno:' scripts/ecotype_pca_v2/config/ecotype_pca_v2.yaml` |
 
 ### 4.1 投影失败排查顺序（遇到「古代样本消失」时）
 

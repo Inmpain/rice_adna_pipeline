@@ -55,6 +55,11 @@
 Civán = 1015
 ```
 
+> 注意（2026-08-18 更正）：上面这行是较早「coverage-first」路线的共享 marker 数。
+> 已跑通并验证的 720 共享投影（`720hybrid.v2.final.png`，20:14）用的是 **44,920
+> marker** 的 pileupCaller 位点集（pileupCaller TotalSites=44920），不是 758。
+> 出图时 `plot_smartpca_evec.py --nmarkers` 应以实际 `.snp` 行数为准，别照抄 758。
+
 ---
 
 ## 5. pileupCaller 环境
@@ -69,8 +74,11 @@ Civán = 1015
 
 ---
 
-## 6. smartpca 投影（失败，本轮不追）
+## 6. smartpca 投影（早期失败，已被 pileupCaller 版 supersede）
 
 smartpca `lsqproject` 把古代样本判为 `insufficient data` 并从 `.evec` 剔除，触发
 `15_pca_qc.py` FATAL。根因与早期 Civán 共享轴相同：古代覆盖位点与 marker 集交集过小。
-本轮不再追，详见 `ECOTYPE_PCA_PILEUPCALLER_PATH_MAP.md` 第 6 节。
+
+**superseded（2026-08-18）**：改用 pileupCaller 的 44,920-marker 共享投影已跑通，
+16 古样本全部进 `.evec`（call 21–1314）。本条只留作历史，别再当当前状态引用；
+当前待办是「两张图 PC 解释度差异」的根因核对，见 `HANDOFF` 第 4 节 B7。

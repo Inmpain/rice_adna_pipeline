@@ -40,7 +40,9 @@ panel_A_3k:
 
 panel_B_720:
   axis_mode: all_modern
-  geno: 0.10
+  # 2026-08-18: relaxed from 0.10 after the 720 missingness audit; docs
+  # (PILEUPCALLER_HANDOFF/PLAN/RESULTS) and the frozen run parameters use 0.20.
+  geno: 0.20
   maf: 0.01
   ld_primary:
     window_kb: 100

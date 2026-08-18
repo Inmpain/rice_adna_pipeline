@@ -13,7 +13,7 @@
 |---|---|---|
 | Phase 0 | REF/ALT 方向体检 | ✅ 完成 |
 | Phase A | 转 PLINK + 锁 A2=irgsp + MAF/geno | 🔶 3K 完成；720 待按 geno 0.20 重跑；Civán 复用补归一化 |
-| Phase B | pileupCaller 替换调用 | 🔶 脚本已落地，spike 工具可用；批量铺开待做 |
+| Phase B | pileupCaller 替换调用 | ✅ 720 共享投影已跑通验证（44,920 marker，16 样本 call 21–1314）；3K 待跑同样流程 |
 | Phase C | 三档现代诊断图 + 古代投影图 | 🔶 绘图脚本已落地；smartpca 投影末尾失败（不追） |
 
 ---
@@ -42,15 +42,16 @@
 
 ## 4. 阻塞 / 已知问题
 
-- 末尾 smartpca `lsqproject` 投影失败（古代样本被 `insufficient data` 剔出
-  `.evec`）。本轮决定**不追**，只留档在 `PATH_MAP` 第 6 节；恢复时优先查各样本
-  `coverage_funnel.tsv` 的 `ld_passed_covered` 是否为 0/极低。
+- 两张 720 图 PC 解释度差异（21.71/19.70 vs 5.70/6.03）待查根因——已定位为
+  图来源不同（`plot_panel_pca.py` modern-only plink2 诊断 vs `plot_smartpca_evec.py`
+  smartpca 投影），不是 `lsqproject` 投影改解释度，见 `HANDOFF` 第 4 节 B7。
 
 ---
 
 ## 5. 下一步（建议顺序）
 
-1. 720 重跑 07（geno 0.20）→ 锁 A2 → 更新 `PHASEA_RESULTS.md` 数字。
-2. Civán 补 Phase A 归一化。
-3. Phase B spike（1 样本 × Civán），验证 pileupCaller 输出与 merge/投影链路。
-4. spike 通过后铺开 16 × 3，再进入 Phase C 出图。
+1. 查清两张 720 图 PC 解释度差异根因（先比两个 `.eval`，见 `HANDOFF` B7）。
+2. 3K 面板照 `HANDOFF` 第 3 节跑 pileupCaller 共享投影（先 1 样本 spike，再 16 批量）。
+3. 主分析私有轴：复用 v1 `run_sample_panel_pca.sh`（命令见 `PHASE1_COMMANDS.md` 第 7 节）。
+4. 出最终图 + 人工核对现代结构、古样本投影位置；LV7008416294 标低置信。
+5. Civán 补 Phase A 归一化（02 转换 / 锁 A2 / 29 转回 EIGENSTRAT）。
