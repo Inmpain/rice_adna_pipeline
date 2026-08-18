@@ -11,6 +11,7 @@ EOF
 }
 
 BAM=""; SAMPLE=""; BFILE=""; REF=""; MAPQ=""; BASEQ=""; SEED=""; OUT=""; LABEL=""
+PILEUP_CALLER="${PILEUP_CALLER:-pileupCaller}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --bam) BAM="$2"; shift 2 ;;
@@ -45,7 +46,7 @@ awk 'BEGIN{OFS="\t"} {print $2, $4-1, $4, $1}' "$PREFIX.snp" > "$PREFIX.sites.be
 
 echo "=== $LABEL mapq=$MAPQ baseq=$BASEQ seed=$SEED ==="
 samtools mpileup -R -B -q "$MAPQ" -Q "$BASEQ" -l "$PREFIX.sites.bed" -f "$REF" "$BAM" \
-  | pileupCaller --randomHaploid --seed "$SEED" --sampleNames "$SAMPLE" --samplePopName Rice \
+  | "$PILEUP_CALLER" --randomHaploid --seed "$SEED" --sampleNames "$SAMPLE" --samplePopName Rice \
       -f "$PREFIX.snp" -p "$PREFIX" \
   2> "$PREFIX.pileupcaller.stderr"
 
