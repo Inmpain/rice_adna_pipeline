@@ -248,16 +248,16 @@ expect_exit "07_overwrite_protection" 3 bash "$SCRIPTS_DIR/07_make_fixed_markers
   --bfile "$BFILE" --keep "$REF_OUT/synthA.reference_samples.keep" --label synthA --out-dir "$FIXED_OUT"
 
 # ============================================================
-# 7. 08: paperlike_5kb thinning against 07's geno_maf_only output
+# 7. 08: paperlike thinning against 07's geno_maf_only output
 # ============================================================
 THIN_OUT="$TMP/thin"
-expect_exit "08_paperlike_5kb" 0 python3 "$SCRIPTS_DIR/08_make_5kb_thinned_markers.py" \
+expect_exit "08_paperlike_15kb" 0 python3 "$SCRIPTS_DIR/08_make_5kb_thinned_markers.py" \
   --config "$CONFIG" --label synthA \
   --geno-maf-bim "$GENOMAF_OUT/synthA.shotgun.ALL.primary.geno_maf_filtered.bim" \
   --upstream-manifest "$GENOMAF_OUT/synthA.shotgun.ALL.primary.geno_maf_manifest.tsv" \
   --out-dir "$THIN_OUT"
-expect_file_exists "08_output_snplist" "$THIN_OUT/synthA.paperlike_5kb.fixed.snplist"
-expect_file_exists "08_output_manifest" "$THIN_OUT/synthA.paperlike_5kb.marker_manifest.tsv"
+expect_file_exists "08_output_snplist" "$THIN_OUT/synthA.paperlike_15kb.fixed.snplist"
+expect_file_exists "08_output_manifest" "$THIN_OUT/synthA.paperlike_15kb.marker_manifest.tsv"
 
 # ============================================================
 # 8. summary

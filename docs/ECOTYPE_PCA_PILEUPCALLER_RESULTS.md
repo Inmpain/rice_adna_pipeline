@@ -31,34 +31,48 @@
 
 ---
 
-## 3. 720 coverage 漏斗
+## 3. coverage 漏斗
+
+### 720
 
 ```text
 6,769,714 raw
   → geno 0.20         ~1.26M
   → MAF 0.01          1,208,247
-  → ∩ ancient coverage  834
-  → r² LD(100kb/0.2)     758
+  → ∩ ancient coverage  872
+  → r² LD(100kb/0.2)     795
 ```
 
 结论：古代覆盖度是真正瓶颈（16 个古 BAM 只覆盖 720 的 5,192 个位点），r² LD 本身
-只温和减 76 个；古代覆盖位点成簇（872 个 MAF∩coverage 里一半相距 <5kb），故古代
+只温和减 77 个；古代覆盖位点成簇（872 个 MAF∩coverage 里一半相距 <5kb），故古代
 投影保留 r² LD、不用 `--bp-space 5000` 物理抽稀。
+
+### 3K（coverage_funnel，union 口径）
+
+```text
+raw_panel_covered        38,665
+  → maf_passed_covered    4,415   ← MAF∩coverage（覆盖候选，未 LD）
+  → ld_passed_covered     2,859   ← coverage-first r² LD 后
+```
+
+即 3K 的覆盖候选 = **4,415**，LD 后 = **2,859**（删 1,556）。与 720 的 872→795 相比，
+3K 覆盖候选多得多，但 LD 剪枝也重得多（高密度 29M 面板，覆盖位点彼此 LD 密集）。
 
 ---
 
 ## 4. 共享 marker 数
 
 ```text
-3K = 2859
-720 = 758
+3K = 2859（覆盖候选 4415，LD 后）
+720 = 795（覆盖候选 872，LD 后）
 Civán = 1015
 ```
 
-> 注意（2026-08-18 更正）：上面这行是较早「coverage-first」路线的共享 marker 数。
+> 注意（2026-08-18 更正）：上面这行是「coverage-first」路线的共享 marker 数。
 > 已跑通并验证的 720 共享投影（`720hybrid.v2.final.png`，20:14）用的是 **44,920
-> marker** 的 pileupCaller 位点集（pileupCaller TotalSites=44920），不是 758。
-> 出图时 `plot_smartpca_evec.py --nmarkers` 应以实际 `.snp` 行数为准，别照抄 758。
+> marker** 的 pileupCaller 位点集（pileupCaller TotalSites=44920），不是 795——两者
+> 是不同配方（44,920 的「5kb backbone + ancient covered」合成集 vs 795 的
+> coverage-first LD）。3K 用哪个配方尚未定，见 PLAN「实际执行策略」。
 
 ---
 

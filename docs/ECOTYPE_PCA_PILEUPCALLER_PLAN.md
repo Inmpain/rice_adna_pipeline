@@ -518,8 +518,8 @@ plink --bfile {prefix} \
 
 ```
 6,769,714 raw → geno0.20 ~1.26M → MAF0.01 1,208,247
-  → ∩ ancient coverage 834   ← 古代覆盖稀疏，不是 LD
-  → r² LD(100kb/0.2) 758      ← 只减 76 个，温和
+  → ∩ ancient coverage 872   ← 古代覆盖稀疏，不是 LD
+  → r² LD(100kb/0.2) 795      ← 只减 77 个，温和
 ```
 
 结论：**古代覆盖度是真正瓶颈**（16 个古代 BAM 只覆盖 720 的 5,192 个位点），r² LD
@@ -528,7 +528,7 @@ plink --bfile {prefix} \
 ### 7.1.2 三条线
 
 1. **古代投影主线（不变）**：MAF ∩ coverage → 候选内 r² LD → `pileupCaller` →
-   smartpca `lsqproject`。共享 marker：3K=2859、720=758、Civán=1015。
+   smartpca `lsqproject`。共享 marker：3K=2859、720=795、Civán=1015。
 
 2. **现代诊断线（增强）**：三档现代-only PCA，其中第三档用**物理距离抽稀
    （`plink2 --thin 5000`）**作为 r² LD 的方法鲁棒性对照，避免高缺失下 r² 不稳定；

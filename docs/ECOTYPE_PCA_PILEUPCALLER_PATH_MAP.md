@@ -132,18 +132,21 @@ Civán : systematic_ref_alt_swap（整体反标）
 | 720 锁 REF 后 PLINK | `<results_v2_root>/phaseA/720/plink/asn720.6m.irgsp.{bed,bim,fam}` |
 | 720 ref 清单 | `<results_v2_root>/phaseA/720/ref/asn720.6m.irgsp_ref.txt` |
 | 720 缺失率审计 | `<results_v2_root>/phaseA/720/audit/720.audit.{missingness,samples}.tsv` |
+| 3K coverage 漏斗 | `<results_v2_root>/phaseA/3k/coverage/3k.coverage_funnel.tsv`（union 38665 → MAF∩coverage 4415 → LD 2859） |
+| 720 coverage 漏斗 | `<results_v2_root>/phaseA/720/coverage/720.coverage_funnel.tsv`（union 5192 → MAF∩coverage 872 → LD 795） |
 
 共享 marker 数（7.1.1）：
 
 ```text
-3K = 2859，720 = 758，Civán = 1015
+3K = 2859（覆盖候选 4415），720 = 795（覆盖候选 872），Civán = 1015
 ```
 
 > 更正（2026-08-18）：720 已跑通验证的共享投影（`720hybrid.v2.final.png`）用
-> **44,920 marker**（pileupCaller TotalSites=44920），不是上面的 758。758 是更早
-> coverage-first 路线数字。出图 `--nmarkers` 用实际 `.snp` 行数。
+> **44,920 marker**（pileupCaller TotalSites=44920），不是上面的 795。795 是
+> coverage-first 路线数字（872 覆盖候选 → LD 后 795）；44,920 是「5kb backbone +
+> ancient covered」合成集。3K 用哪个配方未定。出图 `--nmarkers` 用实际 `.snp` 行数。
 
-720 漏斗：`6,769,714 raw → geno0.20 ~1.26M → MAF0.01 1,208,247 → ∩ ancient coverage 834 → r² LD 758`。
+720 漏斗：`6,769,714 raw → geno0.20 ~1.26M → MAF0.01 1,208,247 → ∩ ancient coverage 872 → r² LD 795`。
 
 ### 4.3 其他可复用中间文件
 

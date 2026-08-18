@@ -126,11 +126,14 @@ def main():
 
     window_bp = cfg["panel_B_720"]["paperlike_5kb"]["window_bp"]
     seed = cfg["panel_B_720"]["paperlike_5kb"]["seed"]
-    logger.info(f"window_bp={window_bp} seed={seed} (from config.panel_B_720.paperlike_5kb)")
+    window_kb = window_bp // 1000
+    route_label = f"paperlike_{window_kb}kb"
+    logger.info(f"window_bp={window_bp} seed={seed} route_label={route_label} "
+                f"(from config.panel_B_720.paperlike_5kb)")
 
     out_dir = Path(args.out_dir)
-    out_snplist = out_dir / f"{args.label}.paperlike_5kb.fixed.snplist"
-    out_manifest = out_dir / f"{args.label}.paperlike_5kb.marker_manifest.tsv"
+    out_snplist = out_dir / f"{args.label}.{route_label}.fixed.snplist"
+    out_manifest = out_dir / f"{args.label}.{route_label}.marker_manifest.tsv"
     check_output_not_present([out_snplist, out_manifest], args.overwrite, logger)
 
     try:
@@ -160,7 +163,7 @@ def main():
         "panel": upstream.get("panel", "NA"),
         "library_type": upstream.get("library_type", "NA"),
         "track": upstream.get("track", "NA"),
-        "sensitivity": "paperlike_5kb",
+        "sensitivity": route_label,
         "reference_samples_n": upstream.get("reference_samples_n", "NA"),
         "raw_snps": upstream.get("raw_snps", "NA"),
         "bait_overlap_snps": upstream.get("bait_overlap_snps", "NA"),

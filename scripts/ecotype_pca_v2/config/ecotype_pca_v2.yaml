@@ -48,7 +48,10 @@ panel_B_720:
     window_kb: 100
     r2: 0.20
   paperlike_5kb:
-    window_bp: 5000
+    # 2026-08-18: backbone spacing relaxed 5kb -> 15kb (user decision); the
+    # route key name "paperlike_5kb" is frozen by spec, but 08 derives its
+    # output label from window_bp//1000 -> "paperlike_15kb".
+    window_bp: 15000
     seed: 20260814
   # STATUS (spec section 5): AUTHOR-PROVIDED HIGH-DENSITY VERSION.
   # FILTER PROVENANCE UNKNOWN. NOT THE EXACT WANG2017 PCA MATRIX.
