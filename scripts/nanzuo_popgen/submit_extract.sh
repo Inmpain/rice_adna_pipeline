@@ -3,7 +3,7 @@ set -euo pipefail
 
 # =====================================================================
 # submit_extract.sh
-# sbatch 提交阶段①全部提取任务: popgen + shotgun(bwa 提取) + function(bam→fq),
+# sbatch 提交阶段①全部提取任务: popgen + shotgun(bowtie2 提取) + function(bam→fq),
 # 每文件一个任务。
 #
 # 用法: bash submit_extract.sh [threads]
@@ -24,14 +24,14 @@ extract_one() {
   local fq=$1 src=$2
   local sample out
   sample=$(basename "$fq" | grep -oE 'YWL1[-_]A[0-9]+' | head -1 | tr '_' '-')
-  out="$BASE/00.extract/$src/${sample}.bwa.primary_mapped.fastq.gz"
+  out="$BASE/00.extract/$src/${sample}.bt2.primary_mapped.fastq.gz"
   [[ -s "$out" ]] && { echo "[$sample][$src] 已存在, 跳过"; return; }
   local jobid
   jobid=$(sbatch --parsable --job-name="nz_ext_${sample}" \
     --cpus-per-task "$THREADS" --mem 32G --time 09:00:00 \
     --partition "$PARTITION" \
     --output "$SLURM_LOG/ext_${src}_${sample}.%j.out" \
-    "$SCRIPT_DIR/extract_bwa_single.sh" "$fq" "$src" "$THREADS")
+    "$SCRIPT_DIR/extract_bt2_single.sh" "$fq" "$src" "$THREADS")
   echo "[$sample][$src] 已提交: $jobid"
 }
 

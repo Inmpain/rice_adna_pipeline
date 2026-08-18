@@ -18,8 +18,8 @@ OUT_DIR="$BASE/01.merge"
 LOG_DIR="$BASE/_logs/merge"
 
 sources=(
-  "$BASE/00.extract/popgen/${sample}.bwa.primary_mapped.fastq.gz"
-  "$BASE/00.extract/shotgun/${sample}.bwa.primary_mapped.fastq.gz"
+  "$BASE/00.extract/popgen/${sample}.bt2.primary_mapped.fastq.gz"
+  "$BASE/00.extract/shotgun/${sample}.bt2.primary_mapped.fastq.gz"
   "$BASE/00.extract/function/${sample}.bam2fq.fastq.gz"
 )
 

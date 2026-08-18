@@ -3,7 +3,7 @@ set -euo pipefail
 
 # =====================================================================
 # collect_stats.sh
-# 汇总每个样本 × mapper 的统计表为两张总表。登录节点跑, 不 sbatch。
+# 汇总每个样本的统计表为两张总表。登录节点跑, 不 sbatch。
 #
 # 用法: bash collect_stats.sh
 #   输出:
@@ -12,25 +12,25 @@ set -euo pipefail
 # =====================================================================
 
 BASE=/home/scratch/yinmt202607/nanzuo
-STATS_ROOT="$BASE/02.map_irgsp"
+STATS_ROOT="$BASE/02.map_irgsp/stats"
 OUT_DIR="$BASE/03.stats"
 mkdir -p "$OUT_DIR"
 
 READ_QC="$OUT_DIR/read_qc.tsv"
 COV_SUM="$OUT_DIR/coverage_summary.tsv"
 
-printf 'sample\tmapper\tmerged_reads\tprimary_mapped\tdup_flagged\tdup_rate_pct\tq20\tq25\tq30\n' > "$READ_QC"
-printf 'sample\tmapper\tcov_bases\tcov_pct\tmean_depth\n' > "$COV_SUM"
+printf 'sample\tmerged_reads\tprimary_mapped\tdup_flagged\tdup_rate_pct\tq20\tq25\tq30\n' > "$READ_QC"
+printf 'sample\tcov_bases\tcov_pct\tmean_depth\n' > "$COV_SUM"
 
-for f in "$STATS_ROOT"/bwa/stats/*.tsv "$STATS_ROOT"/bt2new/stats/*.tsv; do
+for f in "$STATS_ROOT"/*.tsv; do
   [[ -f "$f" ]] || continue
-  cut -f1-9 "$f" >> "$READ_QC"
-  cut -f1,2,10,11,12 "$f" >> "$COV_SUM"
+  cut -f1-8 "$f" >> "$READ_QC"
+  cut -f1,9,10,11 "$f" >> "$COV_SUM"
 done
 
 # 排序(保留表头在第一行)
-{ head -1 "$READ_QC"; tail -n +2 "$READ_QC" | sort -k2,2 -k1,1; } > "$READ_QC.tmp" && mv "$READ_QC.tmp" "$READ_QC"
-{ head -1 "$COV_SUM"; tail -n +2 "$COV_SUM" | sort -k2,2 -k1,1; } > "$COV_SUM.tmp" && mv "$COV_SUM.tmp" "$COV_SUM"
+{ head -1 "$READ_QC"; tail -n +2 "$READ_QC" | sort -k1,1; } > "$READ_QC.tmp" && mv "$READ_QC.tmp" "$READ_QC"
+{ head -1 "$COV_SUM"; tail -n +2 "$COV_SUM" | sort -k1,1; } > "$COV_SUM.tmp" && mv "$COV_SUM.tmp" "$COV_SUM"
 
 echo "=== read_qc.tsv ==="
 column -t "$READ_QC"

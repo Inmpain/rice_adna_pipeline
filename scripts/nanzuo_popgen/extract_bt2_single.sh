@@ -2,13 +2,14 @@
 set -euo pipefail
 
 # =====================================================================
-# extract_bwa_single.sh
-# 阶段① 提取: 单个 FASTQ 用 BWA 比对 asian_rice_panel.fa, 只留 primary mapped
+# extract_bt2_single.sh
+# 阶段① 提取: 单个 FASTQ 用 Bowtie2 比对 asian_rice_panel.fa, 只留 primary mapped
 # reads, 转回 FASTQ。popgen / shotgun 两个来源共用本脚本(单文件粒度, 供 sbatch)。
+# 用 Bowtie2 而非 bwa: 速度快。
 #
-# 用法: bash extract_bwa_single.sh <fq_path> <source> [threads]
+# 用法: bash extract_bt2_single.sh <fq_path> <source> [threads]
 #   source: popgen | shotgun
-#   输出:  nanzuo/00.extract/{source}/{YWL1-AXXXX}.bwa.primary_mapped.fastq.gz
+#   输出:  nanzuo/00.extract/{source}/{YWL1-AXXXX}.bt2.primary_mapped.fastq.gz
 #
 # 说明: 提取阶段的 BAM 只作中间产物(用完即删), 最终只保留 FASTQ;
 #       最终定量比对在阶段②重新比对 irgsp.fa, 无需保留这里的 BAM。
@@ -19,16 +20,16 @@ source="$2"
 THREADS="${3:-20}"
 
 # 工具加载: 优先 module, 失败则假定已在 PATH
-module load bwa/ 2>/dev/null || module load bwa 2>/dev/null || true
+module load bowtie2/ 2>/dev/null || module load bowtie2 2>/dev/null || true
 module load samtools/ 2>/dev/null || module load samtools 2>/dev/null || true
 
-PANEL_REF=/home/scratch/yinmt202607/db/asian_rice_panel_index/asian_rice_panel.fa
+PANEL_BT2_IDX=/home/scratch/yinmt202607/db/asian_rice_panel_index/asian_rice_panel.fa
 BASE=/home/scratch/yinmt202607/nanzuo
 OUT_DIR="$BASE/00.extract/$source"
-LOG_DIR="$BASE/_logs/extract_bwa"
+LOG_DIR="$BASE/_logs/extract_bt2"
 
-# 与主线 / 9格矩阵测试一致
-BWA_ALN_PARAMS=(-l 1024 -n 0.01 -o 2)
+# Bowtie2 新参数(-N1), 与 9 格矩阵测试的 bt2_new 一致
+BT2_PARAMS=(-k 3 -L 22 -N 1 -i S,1,1.15 --mp 1,1 --rdg 0,1 --rfg 0,1 --score-min L,0,-0.1 --no-unal)
 # 0x004 unmapped + 0x100 secondary + 0x800 supplementary
 EXCLUDE_FLAGS=0x904
 
@@ -37,7 +38,7 @@ EXCLUDE_FLAGS=0x904
 sample=$(basename "$fq" | grep -oE 'YWL1[-_]A[0-9]+' | head -1 | tr '_' '-')
 [[ -n "$sample" ]] || { echo "ERROR: 无法从 $fq 解析样本名" >&2; exit 1; }
 
-out_fq="$OUT_DIR/${sample}.bwa.primary_mapped.fastq.gz"
+out_fq="$OUT_DIR/${sample}.bt2.primary_mapped.fastq.gz"
 if [[ -s "$out_fq" ]]; then
     echo "[$sample][$source] 已存在, 跳过"
     exit 0
@@ -49,9 +50,8 @@ tmp_fq="$out_fq.tmp"
 rm -f "$tmp_fq"
 trap 'rm -f "$tmp_bam" "$tmp_fq"' EXIT
 
-bwa aln "${BWA_ALN_PARAMS[@]}" -t "$THREADS" "$PANEL_REF" "$fq" 2> "$LOG_DIR/${sample}.aln.log" \
-  | bwa samse "$PANEL_REF" - "$fq" 2>> "$LOG_DIR/${sample}.aln.log" \
-  | samtools view -@ "$THREADS" -bh -F "$EXCLUDE_FLAGS" -o "$tmp_bam" - 2>> "$LOG_DIR/${sample}.aln.log"
+bowtie2 -p "$THREADS" "${BT2_PARAMS[@]}" -x "$PANEL_BT2_IDX" -U "$fq" 2> "$LOG_DIR/${sample}.extract.log" \
+  | samtools view -@ "$THREADS" -bh -F "$EXCLUDE_FLAGS" -o "$tmp_bam" - 2>> "$LOG_DIR/${sample}.extract.log"
 
 samtools fastq -@ "$THREADS" -n "$tmp_bam" | gzip -c > "$tmp_fq"
 mv "$tmp_fq" "$out_fq"
