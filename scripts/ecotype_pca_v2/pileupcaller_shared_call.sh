@@ -33,6 +33,11 @@ done
 mkdir -p "$OUT"
 PREFIX="$OUT/$LABEL"
 
+# Fail fast if the input bfile is missing/empty or the working directory is wrong.
+# A silently-empty .snp/.sites.bed here is exactly what produces all-9 projections.
+[[ -s "${BFILE}.bim" ]] || { echo "FATAL: ${BFILE}.bim not found (pwd=$(pwd))" >&2; exit 1; }
+[[ -s "${BFILE}.bed" ]] || { echo "FATAL: ${BFILE}.bed not found (pwd=$(pwd))" >&2; exit 1; }
+
 # BIM columns: CHR SNP_ID CM BP A1 A2
 # pileupCaller .snp: SNP_ID CHR CM BP REF ALT  (REF=A2, ALT=A1)
 # normalize CHR "1" -> "chr01" to match the BAM/FASTA contig names.
@@ -43,6 +48,9 @@ awk 'BEGIN{OFS="\t"} {
 
 # sites.bed (0-based, half-open), sorted to match mpileup -l
 awk 'BEGIN{OFS="\t"} {print $2, $4-1, $4, $1}' "$PREFIX.snp" > "$PREFIX.sites.bed"
+
+[[ -s "$PREFIX.snp" ]] || { echo "FATAL: $PREFIX.snp is empty or missing" >&2; exit 1; }
+[[ -s "$PREFIX.sites.bed" ]] || { echo "FATAL: $PREFIX.sites.bed is empty or missing" >&2; exit 1; }
 
 echo "=== $LABEL mapq=$MAPQ baseq=$BASEQ seed=$SEED ==="
 samtools mpileup -R -B -q "$MAPQ" -Q "$BASEQ" -l "$PREFIX.sites.bed" -f "$REF" "$BAM" \
