@@ -63,7 +63,11 @@ MCP proxy 样本（`LV{数字}-LV{数字}-proxy`）不属于 angkor 16 样本，
 **结论**：angkor shotgun 不是单一位置——至少来自王城北护城河、北寺塘、Angkor Thom 护城河、West Baray 四处。
 - 只有 **CAM23-11/13（113 库）有 depth/age**（含已分析的 16 个）；
 - 其余 263 库（CAM2509/22-08/2201）无 depth/age，标注 NA。
-- **排除项**：SmplNTC（阴性对照 18）、空白（43）、Fuglsø（6，非 angkor）。
+- **排除项**：SmplNTC（阴性对照 18）、空白（43，多为 ExrNTC/ExrPTC/LibNTC 对照或 dkzgef 等其他项目库）、
+  Fuglsø（6，真丹麦 Fuglsø Interglacial 样本）。
+  - **已核实**：CGG 的 robot_id（LV7008416xxx 等）是**全球统一顺延、跨项目共享**的编号序列，
+    **不能按 robot 前缀判断项目**；field_sample_id / site_name 才是权威归属。
+    上述 67 条排除均正确（对照/非 angkor）。
 
 ## 4. nanzuo（南佐）
 
