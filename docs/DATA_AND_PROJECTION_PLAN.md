@@ -8,23 +8,26 @@
 
 ## 1. data/ 数据全貌（已 symlink 好）
 
-| 条目 | 内容 | 是否 asian_rice_panel extract？ | 在流程中的角色 |
-|---|---|---|---|
-| `angkor_shotgun_reads/` | 443 个 `{Library_ID}.prefiltered.IRGSP1.mapped.fq` | ❌ **供应商 IRGSP1 预筛**（非 panel） | angkor shotgun 候选 reads（360 angkor + 16 no-besthit 的 shotgun 库 + 对照） |
-| `angkor_capture1_raw/` | 16 个 `*.bbduk.lowcomp_filtered.fq` | ❌ capture 原始（仅 bbduk 低复杂度过滤） | 16 no-besthit 的 capture panel1 原始 reads |
-| `angkor_capture2_raw/` | 16 个 `*.bbduk.lowcomp_filtered.fq` | ❌ 同上 | capture panel2 原始 reads |
-| `angkor_bt2_extract_fastq/` | 32 个 `{robot}_RicePanel{1,2}.bt2new.fastq.gz` | ✅ **bowtie2 -N1 vs asian_rice_panel 提取**（有 QC） | capture 候选 reads 优先用这个 |
-| `nanzuo_extract/popgen/` | 21 个 `YWL1-A3xxx.bt2.primary_mapped.fastq.gz` | ✅ **bowtie2 -N1 vs asian_rice_panel 提取** | 南佐 popgen 子库候选 |
-| `nanzuo_extract/shotgun/` | 21 个 `YWL1-A3xxx.bt2.primary_mapped.fastq.gz` | ✅ **bowtie2 -N1 vs asian_rice_panel 提取** | 南佐 shotgun 子库候选 |
-| `nanzuo_extract/function/` | 21 个 `YWL1-A3xxx.bam2fq.fastq.gz` | ❌ **原始 BAM→fq**（非 panel，类 angkor shotgun） | 南佐 function 子库候选 |
-| `nanzuo_mapped_bams/` | 21 个 `YWL1-A3xxx.dedup.bam`(+bai+stats) | 已 IRGSP 比对的 pooled BAM（我们 bowtie2+markdup 做的） | 参考/对照；besthit 不吃它 |
-| `angkor_metadata/` | 元数据表（见 §3） | — | 出图 / PCA / 损伤 |
-| `asian_rice_panel_index/` | `irgsp.fa`、`asian_rice_panel.fa` + bt2 索引 | — | IRGSP 比对 + 竞争比对参考 |
-| `wgs_eukaryota/`（待补） | `/home/database/ref20250728/cph_euk`（131 库） | — | 竞争比对判种 DB |
+> 「来源」列标注每个数据是**谁产生的**：供应商 / 我们(跑的) / 师兄 / 服务器公共。
+> 目的：明确哪些是已就绪的输入、哪些是师兄流程要重新处理的。
+
+| 条目 | 内容 | 来源 | 是否 panel extract？ | 角色 |
+|---|---|---|---|---|
+| `angkor_shotgun_reads/` | 443 个 `{Library_ID}.prefiltered.IRGSP1.mapped.fq` | **供应商**（测序中心 IRGSP1 预筛） | ❌ 非 panel | angkor shotgun 候选 reads（360 + 16 no-besthit 的 shotgun 库 + 对照） |
+| `angkor_capture1_raw/` | 16 个 `*.bbduk.lowcomp_filtered.fq` | **供应商/原始**（仅 bbduk 低复杂度过滤） | ❌ 非 panel | capture panel1 原始 reads（备选） |
+| `angkor_capture2_raw/` | 16 个 `*.bbduk.lowcomp_filtered.fq` | **供应商/原始** | ❌ 非 panel | capture panel2 原始 reads（备选） |
+| `angkor_bt2_extract_fastq/` | 32 个 `{robot}_RicePanel{1,2}.bt2new.fastq.gz` | **我们跑的**（9 格矩阵 bt2_new） | ✅ bowtie2 -N1 vs asian_rice_panel | capture 候选 reads **优先用这个** |
+| `nanzuo_extract/popgen/` | 21 个 `YWL1-A3xxx.bt2.primary_mapped.fastq.gz` | **我们跑的**（nanzuo_popgen 流程） | ✅ bowtie2 -N1 vs asian_rice_panel | 南佐 popgen 候选 |
+| `nanzuo_extract/shotgun/` | 21 个 `YWL1-A3xxx.bt2.primary_mapped.fastq.gz` | **我们跑的**（nanzuo_popgen 流程） | ✅ bowtie2 -N1 vs asian_rice_panel | 南佐 shotgun 候选 |
+| `nanzuo_extract/function/` | 21 个 `YWL1-A3xxx.bam2fq.fastq.gz` | **我们跑的**（nanzuo_popgen 流程，原始 BAM→fq） | ❌ 非 panel（类 angkor shotgun） | 南佐 function 候选 |
+| `nanzuo_mapped_bams/` | 21 个 `YWL1-A3xxx.dedup.bam`(+bai+stats) | **我们跑的**（bowtie2+markdup） | 已 IRGSP 比对 pooled | 参考/对照；besthit 不吃它 |
+| `angkor_metadata/` | 元数据表（见 §3） | **我们整理的** | — | 出图 / PCA / 损伤 |
+| `asian_rice_panel_index/` | `irgsp.fa`、`asian_rice_panel.fa` + bt2 索引 | 服务器公共（参考） | — | IRGSP 比对 + 竞争比对参考 |
+| `wgs_eukaryota/`（待补） | `/home/database/ref20250728/cph_euk`（131 库） | 服务器公共（师兄流程用） | — | 竞争比对判种 DB |
 
 > ⚠️ `wgs_eukaryota` symlink 还没建（命令见 §6 步骤 0）。
 
-**候选 reads 结论**：capture 用 `angkor_bt2_extract_fastq`；angkor shotgun 用 `angkor_shotgun_reads`（供应商 IRGSP1 预筛，直接当候选）；南佐 popgen/shotgun 用 `nanzuo_extract` 的 panel 提取产物，function 用 bam2fq 产物。
+**候选 reads 结论**：capture 用 `angkor_bt2_extract_fastq`（我们跑的，有 QC）；angkor shotgun 用 `angkor_shotgun_reads`（供应商 IRGSP1 预筛，直接当候选）；南佐 popgen/shotgun 用 `nanzuo_extract` 的 panel 提取产物（我们跑的），function 用 bam2fq 产物。
 
 ---
 
@@ -93,6 +96,16 @@
 
 ## 6. 执行步骤（服务器会话按此推进）
 
+> **策略定稿（用户 2026-08-26 确认）**：**全用师兄流程**（竞争比对 / besthit / 选 reads / IRGSP map / aedna_dedup / pileupCaller / 合并），**唯一替换 = mapping 工具用 bowtie2 而不是 bwa**（bwa 太慢，bowtie2 快），且**竞争比对必须 `-k 100`**（不能用我们的 -k 3）。besthit 也用师兄的脚本（`ref_pipeline/zhe_pipeline/script/besthit_competitive_top10_showOryza_optimized.py`）。
+
+**师兄流程脚本位置**（`/home/scratch/yinmt_rice/ref_pipeline/`）：
+- 竞争比对（bwa 版参考）：`zhe_pipeline/snakemake.Oryza_reads.mapping.260731.smk`（我们改用 bowtie2 -k 100）
+- besthit：`zhe_pipeline/snakemake.filtered_bam_besthit.best10.optimized.260730.smk` + `script/besthit_competitive_top10_showOryza_optimized.py`
+- 选 Oryza reads：`zhe_pipeline/snakemake.extract_Oryza_reads.best10.260730.smk` + `script/select_oryza_competitive_reads.py` + `script/extract_fastq_by_read_names.py`
+- IRGSP mapping（bwa 版参考）：`snakemake.Oryza_reads.mapping.260731.smk`（我们改用 bowtie2，见下）
+- 去重：`script/aedna_dedup.py`
+- pileupCaller + 合并 PLINK：`zhe_pipeline/Snakefile.pseudohaploid.from_panel.asn720_dense.260802.smk`
+
 **Step 0 — 补 link + 环境确认**
 ```bash
 D=/home/scratch/yinmt_rice/data
@@ -102,31 +115,44 @@ ls -d /datasets/caeg_dataset/taxonomy/ncbi/20250530 2>/dev/null && echo TAX_OK |
 ls /home/scratch/yinmt202607/db/asian_rice_panel_index/*.acc2taxid
 ```
 
-**Step A — 竞争比对**（逐库候选 reads → bowtie2 对 131 wgs + panel + IRGSP，k 值按师兄）
-- 输入：§1 各候选 reads（capture 用 bt2_extract，shotgun/nanzuo-function 用现有 fq）
-- 脚本：`rice_adna_pipeline/scripts/oryza_besthit/submit_oryza_competitive_mapping.sh`
+**Step A — 竞争比对**（师兄策略，bowtie2 替代 bwa）
+- 逐库候选 reads → **bowtie2 `-k 100`** 对 131 wgs_eukaryota + asian_rice_panel + IRGSP 竞争比对
+- 参数：师兄的竞争比对逻辑 + 我们 bowtie2 快参数，**k 必须 100**
 - 命名：`{angkor|nanzuo}_{id}.{shotgun|capture_panel1|capture_panel2|popgen|function}.name_sorted.bam`
 
-**Step B — besthit 过滤**
-- `oryza_besthit_damage_filter.py`（damage-window 5bp，Oryza 属 4527 动态解析，KEEP/REJECT）
+**Step B — besthit 过滤（师兄脚本）**
+- `besthit_competitive_top10_showOryza_optimized.py`（target-min-sim 80、damage-end-bases 3）
 - 输出各 unit 的 KEEP reads（FASTQ）
 
-**Step C — IRGSP mapping（我们 bowtie2 -N1）**
-- `real_use/mapping/map_irgsp_single_fq.sh`（bowtie2 `-k3 -L22 -N1 ...` + markdup）
+**Step C — 选 Oryza reads（师兄）**：`select_oryza_competitive_reads.py` + `extract_fastq_by_read_names.py`
 
-**Step D — 去重（师兄 aedna_dedup.py）**
-- 用师兄的去重替代我们 markdup（consensus / unclipped-boundary）
+**Step D — IRGSP mapping（bowtie2，我们的快参数）**
+- `real_use/mapping/map_irgsp_single_fq.sh`（bowtie2 `-k3 -L22 -N1 ...`）——**这一步用我们的 -N1 参数（k 用 3 或 100 开工时定）**
 
-**Step E — pileupCaller 伪单倍体**（每投影单元 1 份 calls）
-- 复用 `real_use/pileupcaller/`（sbatch_pileupcaller_array.sh + shared_call + plink_to_calls），位点集 = 全 6.7M
+**Step E — 去重（师兄 aedna_dedup.py）**：替代我们 markdup
 
-**Step F — merge + lsqproject**
-- `13_merge_ancients_fixed_panel.py` → `14_run_fixed_smartpca.sh`（718 现代参考，lsqproject YES）
+**Step F — pileupCaller 伪单倍体**（每投影单元 1 份 calls，位点集 = 全 6.7M）
+- 复用 `real_use/pileupcaller/`（sbatch_pileupcaller_array.sh + shared_call + plink_to_calls）
 
-**Step G — 出图**
-- `plot_angkor_dashboard.py`（交互面板，meta 用扩展后的 plot_meta）
+**Step G — merge + lsqproject**：`13_merge_ancients_fixed_panel.py` → `14_run_fixed_smartpca.sh`（718 现代，lsqproject YES）
 
-**先 spike**：1 个 angkor + 1 个 nanzuo，跑通 A→E 全链再批量。
+**Step H — 出图**：`plot_angkor_dashboard.py`
+
+**先 spike**：1 个 angkor + 1 个 nanzuo，跑通 A→F 全链再批量。
+
+---
+
+## 6b. 各文件夹内容与来源（谁跑的）
+
+| 文件夹 | 内容 | 来源 |
+|---|---|---|
+| `data/` | §1 数据 symlink | 见 §1「来源」列（供应商/我们/公共） |
+| `rice_adna_pipeline/` | 我们仓库（nanzuo-popgen + oryza_besthit 脚本 + 全部 docs/handoff） | **我们的**（GitHub） |
+| `panel-pca-pipeline/` | 我们仓库（pileupCaller/merge/smartpca/出图脚本） | **我们的**（GitHub） |
+| `real_use/` | 我们跑通的脚本 bundle + 本 MD + 方法对比 | **我们的**（整理） |
+| `ref_pipeline/` | 师兄全流程（zhe_pipeline/original_input/running_log/paleoclimate） | **师兄的**（照搬） |
+
+> 流程归属：**除「mapping 用 bowtie2」是我们的替代外，策略与脚本一律以师兄（ref_pipeline）为准**；data 里的 reads 是供应商/我们已产出的中间品，直接当师兄流程的输入。
 
 ---
 
