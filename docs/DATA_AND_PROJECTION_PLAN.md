@@ -82,15 +82,20 @@
 
 **每个分析单元都出一个投影点，全部落到同一个 6.7M 面板的共享轴上**：
 
-| 样品集 | 投影单元（每单元 1 点） |
-|---|---|
-| angkor shotgun-only（360） | `{robot}`（pooled=shotgun 单库） |
-| angkor no-besthit（16） | `{robot}`（pooled 合并）、`{robot}_SG`、`{robot}_C1`、`{robot}_C2`、`{robot}_BH`（besthit pooled） |
-| nanzuo（21） | `{id}`（pooled）、`{id}_popgen`、`{id}_shotgun`、`{id}_function` |
+| 样品集 | 投影单元（每单元 1 点） | 点数 |
+|---|---|---|
+| angkor shotgun-only（360） | `{robot}`（shotgun=pooled，单 assay） | 360 |
+| angkor no-besthit（16） | `{robot}`（pooled=shotgun+capture1+capture2 合并）、`{robot}_SG`、`{robot}_C1`、`{robot}_C2` | 64 |
+| nanzuo（21） | `{id}`（pooled=popgen+shotgun+function 合并）、`{id}_popgen`、`{id}_shotgun`、`{id}_function` | 84 |
+| **合计** | | **508** |
 
-即：**shotgun / capture(C1,C2) / popgen / function 各自投影，同时 pooled 也投**。总投影点数 ≈ 360 + 16×5 + 21×4 = 524。
+- 即：**shotgun / capture(C1,C2) / popgen / function 各自投影，同时 pooled 也投**。
+- **全样品都走 besthit**（360 + 16 + 21 全部）。
+- 参数**全用师兄的**：mapq25 / baseq25 / seed 派生；**唯一改动 = bowtie2**。
+- 子库点调用数会低，投影噪/被剔除属正常，按低置信标注。
+- 可选：若保留 no-besthit pooled vs besthit pooled 对照，+16 = 524。
 
-> 子库点调用数会低，投影噪/被剔除属正常，按低置信标注。besthit 流程跑完后，每个投影单元得到一份 `.calls.txt`，再按第 6 节步骤 F merge + lsqproject。
+> **besthit 批处理策略（用户定）**：为摊薄 131 个 wgs DB 的读取成本，**所有样品 pooled 一起跑竞争比对 + besthit，再按 read 名前缀拆分**。建议按 **assay 类型**分桶（shotgun 一起 / capture1 一起 / capture2 一起 / popgen 一起 / function 一起），同类一起跑、便于按库拆回。师兄脚本本身是逐 unit 处理（每样 131 并行 job），pooled 是我们的优化，read 名保留 `angkor_`/`nanzuo_` 或 unit 前缀即可拆。
 
 ---
 
@@ -156,9 +161,11 @@ ls /home/scratch/yinmt202607/db/asian_rice_panel_index/*.acc2taxid
 
 ---
 
-## 7. 未决问题（开工确认）
+## 7. 未决问题（已确认）
 
-- nanzuo 参与子库：popgen/shotgun/function 全要？（§5 按全要列）
-- 调用参数：mapq25/baseq25/seed派生（师兄） vs mapq25/baseq30/seed0（我们）——跟师兄一致就全用师兄的
-- angkor 360 shotgun 是否全部走 besthit（还是只对重点样）——§5 按全走列
-- CAM23-11 2021 CE 异常年龄来源
+- **nanzuo 参与子库**：popgen / shotgun / function **全要**（✓ 已确认）
+- **angkor 参与子库**：shotgun / capture1 / capture2 **全要**（✓ 已确认）
+- **pooled**：三个子库合并的 pooled **也要**（✓ 已确认）
+- **参数**：全用师兄的 mapq25 / baseq25 / seed 派生；唯一改动 = bowtie2（✓ 已确认）
+- **besthit 范围**：全样品（360 + 16 + 21）都走（✓ 已确认）
+- **CAM23-11 2021 CE 异常年龄**：待出图前核对（age≥1900 的样品），不阻塞
