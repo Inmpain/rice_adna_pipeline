@@ -95,7 +95,13 @@
 - 子库点调用数会低，投影噪/被剔除属正常，按低置信标注。
 - 可选：若保留 no-besthit pooled vs besthit pooled 对照，+16 = 524。
 
-> **besthit 批处理策略（用户定）**：为摊薄 131 个 wgs DB 的读取成本，**所有样品 pooled 一起跑竞争比对 + besthit，再按 read 名前缀拆分**。建议按 **assay 类型**分桶（shotgun 一起 / capture1 一起 / capture2 一起 / popgen 一起 / function 一起），同类一起跑、便于按库拆回。师兄脚本本身是逐 unit 处理（每样 131 并行 job），pooled 是我们的优化，read 名保留 `angkor_`/`nanzuo_` 或 unit 前缀即可拆。
+> **besthit 批处理策略（用户定，待 spike 验证后定稿）**：为摊薄 131 个 wgs DB 的读取成本，**所有样品 pooled 一起跑竞争比对 + besthit，再按 read 名前缀拆分**。建议按 **assay 类型**分桶（shotgun 一起 / capture1 一起 / capture2 一起 / popgen 一起 / function 一起），同类一起跑、便于按库拆回。师兄脚本本身是逐 unit 处理（每样 131 并行 job），pooled 是我们的优化，read 名保留 `angkor_`/`nanzuo_` 或 unit 前缀即可拆（师兄自己的流程就是 `@1R8_39.shotgun|original` 这种前缀格式，可参照）。
+
+> **⚠️ 可行性与脚本改造（spike 验证点）**：师兄脚本粒度是 per-unit（`submit_oryza_competitive_mapping.sh` 每 SAMPLE 提交 131 job；besthit 按 `{unit}` 输出）。改 pooled 需要：
+> 1. 给每条 read 名加 `{unit_tag}|` 前缀（如 `angkor_LV6000619499_shotgun|`、`nanzuo_YWL1-A3483_popgen|`）再合并
+> 2. 竞争比对脚本参数从「单 SAMPLE」改成「单 batch（已 tag 的 pooled fastq）」
+> 3. besthit 在 batch 上跑，KEEP reads 按前缀 `extract_fastq_by_read_names.py` 拆回各 unit
+> 这三点**必须先用小批量 spike 验证**（见 §6 Step 0.5），通了再全量。
 
 ---
 
@@ -119,6 +125,13 @@ ls "$D/wgs_eukaryota" | head -3
 ls -d /datasets/caeg_dataset/taxonomy/ncbi/20250530 2>/dev/null && echo TAX_OK || echo TAX_NEED_PATH
 ls /home/scratch/yinmt202607/db/asian_rice_panel_index/*.acc2taxid
 ```
+
+**Step 0.5 — ⚠️ 先 spike：验证 pooled besthit 可行性（全量前必做）**
+1. 挑小批量：如 2-3 个 angkor shotgun + 1 个 nanzuo（popgen/shotgun/function 各 1）+ 1 个 angkor capture（C1/C2）
+2. 给这些 reads 加 `{unit_tag}|` 前缀，pooled 成一个 fastq
+3. 跑一遍「竞争比对（bowtie2 -k100）→ besthit（师兄脚本）→ 按前缀拆回各 unit」
+4. **验收**：拆回的各 unit 能对上原样品/库、KEEP 留存率在合理范围（参考师兄 13.72% 量级）、读名前缀无丢失
+5. 通过后再把 pooled 粒度铺到全量（按 assay 分桶）
 
 **Step A — 竞争比对**（师兄策略，bowtie2 替代 bwa）
 - 逐库候选 reads → **bowtie2 `-k 100`** 对 131 wgs_eukaryota + asian_rice_panel + IRGSP 竞争比对
