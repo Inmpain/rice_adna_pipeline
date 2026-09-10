@@ -13,6 +13,17 @@
 
 最后更新: 2026-08-11
 
+## 2026-09-10统一处理单元表
+
+| 仓库路径 | 内容 | 使用场景 |
+|---|---|---|
+| `manifests/processing_units.tsv` | Angkor、Nanzuo、MCP统一处理unit表，共1,132行数据 | pooling、QNAME加`unit_id`前缀、unit split、besthit入口判断 |
+| `manifests/README.md` | 表的来源、校验和及解释限制 | 下载或更新manifest前后核对 |
+| `docs/PROCESSING_UNITS_METADATA_HANDOFF.md` | 当前metadata口径和已知限制 | 工作交接；尤其注意MCP proxy标识和Nanzuo direct-IRGSP旁路 |
+
+该表中的服务器绝对路径属于路径来源记录，生产运行前仍须执行只读存在性检查。
+MCP的`proxy...`值目前只能作为处理键，不能解释为已确认的最终生物样品ID。
+
 ---
 
 ## 一、服务器目录总览(`/home/scratch/yinmt202607/`)
