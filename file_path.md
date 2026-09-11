@@ -29,9 +29,11 @@ MCP的`proxy...`值目前只能作为处理键，不能解释为已确认的最�
 | 仓库路径 | 内容 | 使用场景 |
 |---|---|---|
 | `manifests/rice_environmental_sample_master_v3.csv` | 806个实际环境样品的单表CSV；含样品标识、年代、地点、分阶段reads统计和经纬度审计字段 | f3/f4/qpAdm样品筛选、metadata核对、继续补坐标 |
+| `scripts/export_sample_master_v3_csv.mjs` | 从v2 Excel重建v3 CSV，并按CAM岩芯写入原始metadata坐标 | 更新样品主表时复现坐标逻辑和审计字段 |
 
-坐标字段必须与`coordinate_status`一起解释。`approximate_site_coordinate`
-只是地点级近似值，不是岩芯或采样点GPS；不能用于米级空间分析。
+坐标字段必须与`coordinate_status`一起解释。Angkor 的
+`reported_in_cam_metadata`来自原始 CAM 样品表，并按`core_id`匹配；不要
+用 Angkor 地名的网页近似坐标覆盖。空坐标仍表示尚未获得可靠定位。
 
 ---
 

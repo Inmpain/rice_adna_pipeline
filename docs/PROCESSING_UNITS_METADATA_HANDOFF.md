@@ -41,5 +41,5 @@ a canonical output is documented.
 
 Coordinate follow-up should prioritize rows where `coordinate_status` is
 `needs_georeferencing`, then `missing_site_metadata`. Angkor rows marked
-`approximate_site_coordinate` require field GPS replacement before fine-scale
-spatial analysis.
+`reported_in_cam_metadata` are core-specific values from the original CAM
+sample metadata; do not replace them with locality-level web coordinates.

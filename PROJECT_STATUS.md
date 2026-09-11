@@ -17,6 +17,8 @@ constraints are documented in `manifests/README.md` and
 
 Added `manifests/rice_environmental_sample_master_v3.csv`, a one-row-per-sample
 table for 806 environmental samples. It preserves the staged read counts from
-the reviewed v2 workbook and adds coordinate status, source, and notes. The
-table distinguishes reported coordinates, approximate Angkor locality points,
-sites still needing georeferencing, and rows lacking site metadata.
+the reviewed v2 workbook and adds coordinate status, source, and notes. Angkor
+coordinates are the CAM core coordinates reported in
+`sample_meta_data_20250922.tsv`, not locality centroids from web gazetteers.
+The table also distinguishes other reported coordinates, sites still needing
+georeferencing, and rows lacking site metadata.

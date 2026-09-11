@@ -30,14 +30,16 @@ non-Angkor/QC519 records retained in the reviewed master table.
 - Data rows: 806
 - Columns: 63
 - Unique `sample_id`: 806
-- SHA-256: `5f5602df8efd8b3f0468b58472014e8da2d0ae3d5565850a925d9f0ad0400022`
+- SHA-256: `b614f4eb399c23b9a25b339cd2bfd3ae50d9c52efa07196be5e54e216e0e012e`
 
 Coordinate interpretation:
 
+- `reported_in_cam_metadata` (376): Angkor coordinates copied by exact
+  `core_id` from the `field_sample_id@field_sample`, `latitude`, and `longitude`
+  columns in `sample_meta_data_20250922.tsv`. The five core assignments were
+  independently reproduced in `angkor_final_metadata.tsv`.
 - `reported_in_sample_metadata` (33): copied unchanged from the Nanzuo/MCP
   sample metadata.
-- `approximate_site_coordinate` (376): Angkor locality-level coordinates from
-  cited gazetteer/map sources; these are not sediment-core GPS coordinates.
 - `needs_georeferencing` (36): a site name is present but a reliable sampling
   coordinate is not yet available.
 - `missing_site_metadata` (361): no site was available, so coordinates remain
