@@ -24,6 +24,15 @@
 该表中的服务器绝对路径属于路径来源记录，生产运行前仍须执行只读存在性检查。
 MCP的`proxy...`值目前只能作为处理键，不能解释为已确认的最终生物样品ID。
 
+## 2026-09-11环境样品主表
+
+| 仓库路径 | 内容 | 使用场景 |
+|---|---|---|
+| `manifests/rice_environmental_sample_master_v3.csv` | 806个实际环境样品的单表CSV；含样品标识、年代、地点、分阶段reads统计和经纬度审计字段 | f3/f4/qpAdm样品筛选、metadata核对、继续补坐标 |
+
+坐标字段必须与`coordinate_status`一起解释。`approximate_site_coordinate`
+只是地点级近似值，不是岩芯或采样点GPS；不能用于米级空间分析。
+
 ---
 
 ## 一、服务器目录总览(`/home/scratch/yinmt202607/`)

@@ -12,3 +12,11 @@ Added `manifests/processing_units.tsv`, the compact unified processing-unit
 manifest for Angkor, Nanzuo, and MCP (1,132 units). Its provenance and usage
 constraints are documented in `manifests/README.md` and
 `docs/PROCESSING_UNITS_METADATA_HANDOFF.md`.
+
+## 2026-09-11 environmental sample master v3
+
+Added `manifests/rice_environmental_sample_master_v3.csv`, a one-row-per-sample
+table for 806 environmental samples. It preserves the staged read counts from
+the reviewed v2 workbook and adds coordinate status, source, and notes. The
+table distinguishes reported coordinates, approximate Angkor locality points,
+sites still needing georeferencing, and rows lacking site metadata.
